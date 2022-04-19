@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package DeepSars;
+
+message Genome {
+  string   accession = 1;
+  int32    genome_len = 2;
+  string   genome_seq = 3;
+}

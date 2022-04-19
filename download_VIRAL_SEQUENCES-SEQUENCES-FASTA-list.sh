@@ -1,0 +1,1 @@
+java -jar /home/zuher/Downloads/cdp-file-downloader.jar --domain=VIRAL_SEQUENCES --datatype=SEQUENCES --format=FASTA --location=/home/zuher/Downloads --email=NONE --accessions=MN908947.3 --protocol=FTP --asperaLocation=null
