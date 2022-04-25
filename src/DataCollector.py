@@ -12,7 +12,16 @@ from typing import List
 Accessions = List[str]
 
 class FastaSeqGetter(object):
+    """
+    FastaSeqGetter class This class is aimed to get a list of accessions as presented in the
+    https://www.covid19dataportal.org/sequences database, and download them.
+    The main function of this class is simply getSeqs
+
+    """
     def __init__(self):
+        """
+        Initializes all of the parameters needed to contact the database using the shell API.
+        """
         self.command: str = "java -jar cdp-file-downloader.jar"
         self.domain: str = "--domain=VIRAL_SEQUENCES"
         self.datatype: str = "--datatype=SEQUENCES"
@@ -31,6 +40,20 @@ class FastaSeqGetter(object):
 
     def getSeqs(self,
                 acc_list: Accessions):
+        """
+        Args:
+            A list of accessions as presented in the database.
+            ***
+            NOTE: This list might be errorfull and as a result not all accessions will be downloaded correctly,
+            this is a low-priority assignment, but a mechanism dealing with those errors must be added.
+            e.g. accessions as appears in the accessions.tsv file may contain multiple accession IDs this should be
+            accounted for. Also, many accession IDs may be incorrect. Given the implementation of that function,
+            another existing sequences may be damaged and not downloaded.
+            ***
+        Returns:
+            TODO: The list of all successful accessions downloaded.
+
+        """
         # Save old accessions pattern
         old_accessions = self.accessions
 
@@ -145,7 +168,7 @@ class FastaSeqGetter(object):
 
 
 
-class CollectSeqData(object):
+class DataCollector(object):
     """
     Class for the collection of sequenced data.
     The covid-19 sequenced data is collected from the:
@@ -202,10 +225,21 @@ class CollectSeqData(object):
 
     def exists(self,
                acc_id: str):
+        """
+        simply returns True if the accession already exist in the "data/raw directory". Else returns False.
+        """
         return acc_id in self.existing_seqs
 
     def getSeqByAcc(self,
                     acc_id: str):
+        """
+        If the accession exists, it downloads the sequence that are related to that accession if is found in the
+        "accessions.tsv" file.
+        Args: 1. A string specifying the accession id
+
+        Returns: None
+        """
+
         # Check accession validity (if exists)
         if not (self.acc_df['acc'] == acc_id).any():
             print("Accession not found")
@@ -224,6 +258,7 @@ class CollectSeqData(object):
                              lineage: str):
         """
         If the lineage exists, it downloads all sequences that are related to that lineage that could be found in the
+        "accessions.tsv" file.
         Args: 1. A string specifying the lineage
 
         Returns: None
@@ -248,12 +283,23 @@ class CollectSeqData(object):
             self.seq_getter.getSeqs(accessions[i*fold: (i+1)*fold])
 
 
+    def getAccPath(self,
+                   acc_id: str):
+        """
+        Returns the fasta file of the accession if exists, returns empty string if does not exist
+        """
+        if not self.exists(acc_id):
+            return ""
+        else:
+            return self.seq_getter.getSeqFilesLoc() + acc_id + ".fasta"
+
+
     def print(self):
         print(self.acc_df.head(10))
 
 
-data_collector = CollectSeqData("../accessions.tsv")
-data_collector.print()
+#data_collector = DataCollector("../accessions.tsv")
+#data_collector.print()
 '''
 tmp = FastaSeqGetter()
 tmp.getSeqs(["OK423926"])

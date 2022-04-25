@@ -2,3 +2,5 @@ numpy
 tensorflow
 protobufs
 gzip
+pip install numproto
+pip install mmh3 # murmur hash 3
