@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import math
 
 class Linear(tf.keras.layers.Layer):
     """
@@ -9,12 +10,12 @@ class Linear(tf.keras.layers.Layer):
 
     Long story short, it is just a layer that in the forward pass performs the following operation
     X@W + b
-    The output is of course of size units*n
+    The output is of course of size n*units
     """
     def __init__(self,
                  units: int = 1,    # the number of units (neurons)
                  **kwargs):
-        super().__init(**kwargs)
+        super().__init__(**kwargs)
         self.units = units
 
     def build(self,
@@ -46,15 +47,16 @@ class Linear(tf.keras.layers.Layer):
                 "units": self.units
                 }
 
+"""
 def scaledDotProductAttention(K,
                               V,
                               Q):
-    """
+    '''
     Receives three matrices, the Key matrix (K), the Value matrix (V), and the Query matrix(Q)
     shape(K) = n * d_k
     shape(Q) = n * d_k
     shape(V) = n * d_v
-    """
+    '''
     d_k = K.shape[-2]
 
     # Matmul
@@ -69,18 +71,45 @@ def scaledDotProductAttention(K,
     # Matmul with values and return
     return Z @ V
 
-ScaledDotProductAttention = tf.keras.layers.Lambda(lambda K, V, Q: scaledDotProductAttention(K, V, Q))
+# ScaledDotProductAttention = tf.keras.layers.Lambda(lambda K, V, Q: scaledDotProductAttention(K, V, Q))
+"""
+
+class ScaledDotProductAttention(tf.keras.layers.Layer):
+    def __init__(self,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.softmax = tf.keras.layers.Softmax()
+
+    def call(self,
+             K,
+             V,
+             Q):
+        d_k = K.shape[-1]
+        last_dim = len(K.shape) - 1
+        # Matmul
+        Z = Q @ tf.transpose(K, perm=[last_dim, last_dim-1])
+        # Scale
+        Z = Z / math.sqrt(d_k)
+        # SoftMax
+        Z = self.softmax(Z)
+        # Matmul with values and return
+        return Z @ V
+
+
 
 class MultiHeadAttention(tf.keras.layers.Layer):
     def __init__(self,
                  d_key: int,
                  d_val: int,
                  d_model: int,
-                 heads: int):
+                 heads: int,
+                 **kwargs):
+        super().__init__(**kwargs)
         self.heads = heads
         self.lin_key_heads = [Linear(d_key) for _ in range(self.heads)]
         self.lin_qry_heads = [Linear(d_key) for _ in range(self.heads)]
         self.lin_val_heads = [Linear(d_val) for _ in range(self.heads)]
+        self.scaled_dot_prod_attention = ScaledDotProductAttention()
         self.lin_out = Linear(d_model)  # Think about it
 
     # No need for build. No independent weights are defined in this layer. Every weight is a part of an inner layer.
@@ -90,13 +119,13 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         # TODO: substitute for loop with vectorization.
         Z = []
         for i in range(self.heads):
-            K = self.lin_key_heads[i]
-            Q = self.lin_qry_heads[i]
-            V = self.lin_val_heads[i]
+            K = self.lin_key_heads[i](X)
+            Q = self.lin_qry_heads[i](X)
+            V = self.lin_val_heads[i](X)
 
-            Z.append(ScaledDotProductAttention(K=K,
-                                               V=V,
-                                               Q=Q))
+            Z.append(self.scaled_dot_prod_attention(K=K,
+                                                    V=V,
+                                                    Q=Q))
         Z = tf.concat(Z, -1)
         return self.lin_out(Z)
 
@@ -113,6 +142,27 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         config += {"heads": self.heads}
         return config
 
+
+class PredictorBlock(Linear):
+    """
+    This class gets as an input a genome feature tensor in the form of n*d_m_model.
+    this input describes n feature vectors (of size d_model) of the genome sitting horizontally.
+    This layer is a dense layer with the objective of deciding which genomic class the input is from.
+
+    This means calculates, softmax((X@W+b)[0])
+    and outputs it (the dims of the output is exactly like the dims of the input).
+    """
+    def __init__(self,
+                 **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, X):
+        return tf.keras.activations.softmax((X@self.kernel + self.bias),
+                                            axis=-1)    # need to be changed
+
+    def get_config(self):
+        base_config = super().get_config()
+        return {**base_config}
 
 class FeedForward(Linear):
     """
@@ -138,7 +188,8 @@ class FeedForward(Linear):
         base_config = super().get_config()
         return {**base_config,
                 "activation": tf.keras.activations.serialize(self.activation),
-                "outer_units": self.outer_layer.get_config()}
+                "outer_units": self.outer_layer.get_config()
+                }
 
 class ResidualBlock(tf.keras.layers.Layer):
     def __init__(self,
@@ -162,22 +213,27 @@ class EncoderBlock(tf.keras.layers.Layer):
                  d_val: int = 1,
                  d_key: int = 1,
                  d_ff: int = 1,
-                 heads: int = 1
-                 ):
-        super().__init__()
+                 heads: int = 1,
+                 **kwargs):
+        super().__init__(**kwargs)
         self.MHA_res_block = ResidualBlock(MultiHeadAttention(d_val=d_val,
                                                               d_key=d_key,
                                                               d_model=d_model,
                                                               heads=heads))
         self.FF_res_block = ResidualBlock(FeedForward(outer_units=d_model,
-                                                      units=d_ff))
+                                                      units=d_ff))  # TODO: Maybe add gelu as the activation following ViT
+        self.norm = tf.keras.layers.Normalization()
 
     def call(self,
              X):
-        Z = self.MHA_res_block(X)
-        Z = tf.linalg.normalize(Z, axis=[-1])
+        Z = self.norm(X)
+        print("passed norm 1")
+        Z = self.MHA_res_block(Z)
+        print("passed res block 1")
+        Z = self.norm(Z)
+        print("passed norm 2")
         Z = self.FF_res_block(Z)
-        Z = tf.linalg.normalize(Z, axis=[-1])
+        print("passed res block 2")
         return Z
 
     def get_config(self):
@@ -185,3 +241,30 @@ class EncoderBlock(tf.keras.layers.Layer):
         config += self.MHA_res_block.get_config()
         config += self.FF_res_block.get_config()
         return config
+
+class SarsVitModel(tf.keras.Model):
+    def __init__(self,
+                 N: int = 1,    # Number of repeats of the EncoderBlock
+                 d_out: int = 2,    # The number of classes
+                 d_model: int = 1,
+                 d_val: int = 1,
+                 d_key: int = 1,
+                 d_ff: int = 1,
+                 heads: int = 1,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.N = N
+        self.encoder_block = EncoderBlock(d_model=d_model,
+                                          d_val=d_val,
+                                          d_key=d_key,
+                                          d_ff=d_ff,
+                                          heads=heads)
+        self.out = PredictorBlock(units=d_out)
+
+    def call(self, X):
+        print("~~~~~~~~~~~~~~~~~~")
+        print(X)
+        Z = X
+        for _ in range(self.N):
+            Z = self.encoder_block(Z)
+        return self.out(Z)

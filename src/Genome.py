@@ -224,7 +224,7 @@ class Genome(object):
                          kmer_size: int,
                          fragment_size: int,
                          n: int,
-                         hasher: Hasher) -> np.ndarray:
+                         hasher: Hasher = mmh3.hash_from_buffer) -> np.ndarray:
         """
         returns a created Genome tensor
         """
@@ -257,4 +257,4 @@ def testVectoriztion():
     print(genome_tensor)
 
 
-testVectoriztion()
+# testVectoriztion()
