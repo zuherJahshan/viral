@@ -1,6 +1,13 @@
-import numpy as np
 import tensorflow as tf
 import math
+
+"""
+To Remove warnings coming from model save.
+as suggested in:
+https://stackoverflow.com/questions/65697623/tensorflow-warning-found-untraced-functions-such-as-lstm-cell-6-layer-call-and
+"""
+import absl.logging
+absl.logging.set_verbosity(absl.logging.ERROR)
 
 class Linear(tf.keras.layers.Layer):
     """
@@ -41,38 +48,14 @@ class Linear(tf.keras.layers.Layer):
         return tf.TensorShape(batch_input_shape.as_list()[:-1] +
                               [self.units])    # batch shape, n, units
 
+
+    def getHP(self):
+        return {"units": self.units}
+
     def get_config(self):
-        base_config = super().get_config()
-        return {**base_config,
-                "units": self.units
-                }
-
-"""
-def scaledDotProductAttention(K,
-                              V,
-                              Q):
-    '''
-    Receives three matrices, the Key matrix (K), the Value matrix (V), and the Query matrix(Q)
-    shape(K) = n * d_k
-    shape(Q) = n * d_k
-    shape(V) = n * d_v
-    '''
-    d_k = K.shape[-2]
-
-    # Matmul
-    Z = Q @ tf.transpose(K)
-
-    # Scale
-    Z = Z / tf.sqrt(d_k)
-
-    # SoftMax
-    Z = tf.nn.softmax(Z)
-
-    # Matmul with values and return
-    return Z @ V
-
-# ScaledDotProductAttention = tf.keras.layers.Lambda(lambda K, V, Q: scaledDotProductAttention(K, V, Q))
-"""
+        config = super().get_config()
+        config.update(self.getHP())
+        return config
 
 class ScaledDotProductAttention(tf.keras.layers.Layer):
     def __init__(self,
@@ -96,8 +79,7 @@ class ScaledDotProductAttention(tf.keras.layers.Layer):
         return Z @ V
 
 
-
-class MultiHeadAttention(tf.keras.layers.Layer):
+class MyMultiHeadAttention(tf.keras.layers.Layer):
     def __init__(self,
                  d_key: int,
                  d_val: int,
@@ -127,19 +109,21 @@ class MultiHeadAttention(tf.keras.layers.Layer):
                                                     V=V,
                                                     Q=Q))
         Z = tf.concat(Z, -1)
-        return self.lin_out(Z)
+        return self.lin_out(Z) + X
 
     def compute_output_shape(self,
                              batch_input_shape):
         return tf.TensorShape(batch_input_shape)
 
+    def getHP(self):
+        return {"d_key": self.lin_key_heads[0].getHP()["units"],
+                "d_val": self.lin_val_heads[0].getHP()["units"],
+                "d_model": self.lin_out.getHP()["units"],
+                "heads": self.heads}
+
     def get_config(self):
         config = super().get_config()
-        config += {"lin_key_heads_{}".format(i): self.lin_key_heads[i].get_config() for i in range(self.heads)}
-        config += {"lin_val_heads_{}".format(i): self.lin_val_heads[i].get_config() for i in range(self.heads)}
-        config += {"lin_qry_heads_{}".format(i): self.lin_qry_heads[i].get_config() for i in range(self.heads)}
-        config += {"lin_out": self.lin_out.get_config()}
-        config += {"heads": self.heads}
+        config.update(self.getHP())
         return config
 
 
@@ -182,28 +166,15 @@ class FeedForward(Linear):
         self.outer_layer = Linear(outer_units)
 
     def call(self, X):
-        return self.outer_layer(self.activation(X@self.kernel + self.bias))
+        return self.outer_layer(self.activation(X@self.kernel + self.bias)) + X
 
-    def get_config(self):
-        base_config = super().get_config()
-        return {**base_config,
-                "activation": tf.keras.activations.serialize(self.activation),
-                "outer_units": self.outer_layer.get_config()
-                }
-
-class ResidualBlock(tf.keras.layers.Layer):
-    def __init__(self,
-                 layer: tf.keras.layers.Layer,
-                 **kwargs):
-        super().__init__(**kwargs)
-        self.layer = layer
-
-    def call(self, X):
-        return self.layer(X) + X
+    def getHP(self):
+        return {"activation": tf.keras.activations.serialize(self.activation),
+                "outer_units": self.outer_layer.getHP()["units"]}
 
     def get_config(self):
         config = super().get_config()
-        config += self.layer.get_config()
+        config.update(self.getHP())
         return config
 
 
@@ -216,26 +187,30 @@ class EncoderBlock(tf.keras.layers.Layer):
                  heads: int = 1,
                  **kwargs):
         super().__init__(**kwargs)
-        self.MHA_res_block = ResidualBlock(MultiHeadAttention(d_val=d_val,
-                                                              d_key=d_key,
-                                                              d_model=d_model,
-                                                              heads=heads))
-        self.FF_res_block = ResidualBlock(FeedForward(outer_units=d_model,
-                                                      units=d_ff))  # TODO: Maybe add gelu as the activation following ViT
+        self.mha = MyMultiHeadAttention(d_val=d_val,
+                                      d_key=d_key,
+                                      d_model=d_model,
+                                      heads=heads)
+        self.ff = FeedForward(outer_units=d_model,
+                              units=d_ff)  # TODO: Maybe add gelu as the activation following ViT
         self.norm = tf.keras.layers.Normalization()
 
     def call(self,
              X):
         Z = self.norm(X)
-        Z = self.MHA_res_block(Z)
+        Z = self.mha(Z)
         Z = self.norm(Z)
-        Z = self.FF_res_block(Z)
+        Z = self.ff(Z)
         return Z
+
+    def getHP(self):
+        HP = self.mha.getHP()
+        HP.update(self.ff.getHP())
+        return HP
 
     def get_config(self):
         config = super().get_config()
-        config += self.MHA_res_block.get_config()
-        config += self.FF_res_block.get_config()
+        config.update(self.getHP())
         return config
 
 class SarsVitModel(tf.keras.Model):
@@ -255,28 +230,43 @@ class SarsVitModel(tf.keras.Model):
                                             d_key=d_key,
                                             d_ff=d_ff,
                                             heads=heads) for _ in range(self.N)]
+        self.norm = tf.keras.layers.Normalization()
         self.out = PredictorBlock(units=d_out)
 
     def call(self, X):
         Z = X
-        cnt = 0
         for encoder_block in self.encoder_blocks:
-            cnt += 1
             Z = encoder_block(Z)
+        Z = self.norm(Z)
         return self.out(Z)
+
+    def getHP(self):
+        HP = {"N": self.N}
+        HP.update(self.encoder_blocks[0].getHP())
+        HP.update(self.out.getHP())
+        return HP
 
     def get_config(self):
         config = super().get_config()
-        config += {"N": self.N}
-        for encoder_block in self.encoder_blocks:
-            config += encoder_block.get_config()
-        config += self.out.get_config()
+        config.update(self.getHP())
         return config
+
+custom_objects = {"Linear": Linear,
+                  "ScaledDotProductAttention": ScaledDotProductAttention,
+                  "MyMultiHeadAttention": MyMultiHeadAttention,
+                  "PredictorBlock": PredictorBlock,
+                  "FeedForward": FeedForward,
+                  "EncoderBlock": EncoderBlock,
+                  "SarsVitModel": SarsVitModel}
+
+
+
+
 
 
 """
 TODO: 
-    1. Fix get_config's and try saving the model to see that it works.
+    1. Fix get_config's and try saving the model to see that it works. Done
     2. Try to include GPU in calculations
     3. Parallelize MultiHeadAttention loop.
     4. Work on training loop.

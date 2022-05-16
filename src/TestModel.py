@@ -1,8 +1,8 @@
 import unittest
+
 import Model
 import tensorflow as tf
 import numpy as np
-from Genome import Genome
 
 class TestModel(unittest.TestCase):
     def test_scaledDotProductAttention(self):
@@ -20,7 +20,16 @@ class TestModel(unittest.TestCase):
 
         # Check dimensions compatibility
         self.assertEqual(out.shape,
-                         [n, d_val])  # add assertion here
+                         [n, d_val])
+
+        # Check serialization and deserialization
+        serialized_layer = tf.keras.layers.serialize(scaled_dot_prod_attention)
+        new_layer = tf.keras.layers.deserialize(
+            serialized_layer,
+            custom_objects=Model.custom_objects
+        )
+        self.assertTrue(np.allclose(new_layer(K=K, V=V, Q=Q),
+                                    scaled_dot_prod_attention(K=K, V=V, Q=Q)))
 
     def test_linear(self):
         n = 200
@@ -49,10 +58,10 @@ class TestModel(unittest.TestCase):
         heads = 8
 
         X = tf.random.uniform(shape=[n, d_model])
-        multi_head_attention = Model.MultiHeadAttention(d_model=d_model,
-                                                        d_key=d_key,
-                                                        d_val=d_val,
-                                                        heads=heads)
+        multi_head_attention = Model.MyMultiHeadAttention(d_model=d_model,
+                                                          d_key=d_key,
+                                                          d_val=d_val,
+                                                          heads=heads)
         out = multi_head_attention(X)
 
         # Check out dimensions
@@ -108,34 +117,6 @@ class TestModel(unittest.TestCase):
         self.assertEqual(vars_in_layer,
                          true_vars_in_layer)
 
-    def test_resBlock(self):
-        n = 200
-        d_model = 256
-        d_key = 64
-        d_val = 128
-        heads = 8
-        d_ff = 1024
-
-        X = tf.random.uniform(shape=[n, d_model])
-        multi_head_attention = Model.MultiHeadAttention(d_model=d_model,
-                                                        d_key=d_key,
-                                                        d_val=d_val,
-                                                        heads=heads)
-        ff_layer = Model.FeedForward(units=d_ff,
-                                     outer_units=d_model)
-
-        res_block1 = Model.ResidualBlock(multi_head_attention)
-        res_block2 = Model.ResidualBlock(ff_layer)
-
-        Z1 = res_block1(X)
-        Z2 = res_block2(X)
-
-        # Check dimensions
-        self.assertEqual(Z1.shape,
-                         Z2.shape)
-        self.assertEqual(Z1.shape,
-                         [n, d_model])
-
     def test_encoderBlock(self):
         n: int = 200
         d_model: int = 256
@@ -187,6 +168,30 @@ class TestModel(unittest.TestCase):
             is_ones = tf.math.logical_and(ones < 1.0001, ones > 0.9999)
             return tf.reduce_all(is_ones)
         self.assertTrue(isProbsTensor(pred))
+
+    def test_modelSave(self):
+        d_model = 200
+        N = 4
+        n = 256
+        d_out = 2
+        d_ff = 2048
+        d_key = 64
+        d_val = 64
+        heads = 2
+
+        X = tf.random.uniform(shape=[n, d_model])
+
+        model = Model.SarsVitModel(N=N,
+                             d_out=d_out,
+                             d_ff=d_ff,
+                             d_key=d_key,
+                             d_val=d_val,
+                             heads=heads)
+        pred = model.predict(X)
+
+        model.save("../Models/test_model")
+        loaded_model = tf.keras.models.load_model("../Models/test_model")
+        self.assertTrue(np.isclose(pred, loaded_model.predict(X)).all())
 
 if __name__ == '__main__':
     unittest.main(verbosity=10)
