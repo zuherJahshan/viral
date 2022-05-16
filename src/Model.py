@@ -227,13 +227,9 @@ class EncoderBlock(tf.keras.layers.Layer):
     def call(self,
              X):
         Z = self.norm(X)
-        print("passed norm 1")
         Z = self.MHA_res_block(Z)
-        print("passed res block 1")
         Z = self.norm(Z)
-        print("passed norm 2")
         Z = self.FF_res_block(Z)
-        print("passed res block 2")
         return Z
 
     def get_config(self):
@@ -254,17 +250,34 @@ class SarsVitModel(tf.keras.Model):
                  **kwargs):
         super().__init__(**kwargs)
         self.N = N
-        self.encoder_block = EncoderBlock(d_model=d_model,
-                                          d_val=d_val,
-                                          d_key=d_key,
-                                          d_ff=d_ff,
-                                          heads=heads)
+        self.encoder_blocks = [EncoderBlock(d_model=d_model,
+                                            d_val=d_val,
+                                            d_key=d_key,
+                                            d_ff=d_ff,
+                                            heads=heads) for _ in range(self.N)]
         self.out = PredictorBlock(units=d_out)
 
     def call(self, X):
-        print("~~~~~~~~~~~~~~~~~~")
-        print(X)
         Z = X
-        for _ in range(self.N):
-            Z = self.encoder_block(Z)
+        cnt = 0
+        for encoder_block in self.encoder_blocks:
+            cnt += 1
+            Z = encoder_block(Z)
         return self.out(Z)
+
+    def get_config(self):
+        config = super().get_config()
+        config += {"N": self.N}
+        for encoder_block in self.encoder_blocks:
+            config += encoder_block.get_config()
+        config += self.out.get_config()
+        return config
+
+
+"""
+TODO: 
+    1. Fix get_config's and try saving the model to see that it works.
+    2. Try to include GPU in calculations
+    3. Parallelize MultiHeadAttention loop.
+    4. Work on training loop.
+"""
