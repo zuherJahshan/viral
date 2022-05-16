@@ -174,6 +174,7 @@ class Genome(object):
             return 0
         else:
             assert False, "Base {} is unacceptable geonme sequence base".format(base)
+            #STAM
 
     def __vectorizeSeq(self):
         """
