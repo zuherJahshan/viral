@@ -1,3 +1,4 @@
 data/**
+Models/**
 **/*.log
 accessions.tsv
