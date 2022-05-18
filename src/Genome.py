@@ -118,9 +118,12 @@ class Genome(object):
     The purpose of this class is to return the different representations of the genome
     """
     def __init__(self,
-                 accession_id: str):
+                 accession_id: str,
+                 data_collector = None):
         # Initializing DataCollector
-        self.data_collector: DataCollector = DataCollector("../accessions.tsv")
+        if data_collector is None:
+            self.data_collector: DataCollector = DataCollector("../accessions.tsv")
+        self.data_collector = data_collector
 
         # Checks if the accession exists, if not, attempts to download it
         if not self.data_collector.exists(accession_id):
