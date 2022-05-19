@@ -14,6 +14,8 @@ from DataCollector import DataCollector
 
 Hasher = Callable[[np.ndarray], np.uint64]
 
+base_count = 4
+
 class GenomeTensor(object):
     def __init__(self,
                  genome_vec: np.ndarray,
@@ -44,16 +46,17 @@ class GenomeTensor(object):
         sigs: List = []
         kmer_in_genome: int = len(genome_vec) - self.kmer_size + 1
         for i in range(kmer_in_genome):
-            sigs.append((i, self.hasher(genome_vec[i: i+self.kmer_size]))) # hash and insert to the list
+            sigs.append((i, self.hasher(genome_vec[i: i+self.kmer_size])))  # hash and insert to the list
         sigs.sort(key=hasher_key)
         sigs = sigs[:self.n]
         sigs.sort(key=index_key)
         # print(sigs) - DEBUG
 
         # Making the tensor
-        self.tensor = np.zeros(shape=(self.n, self.fragment_size))
+        self.tensor = np.zeros(shape=(self.n, self.fragment_size, base_count))
         for i in range(self.n):
             # Deciding boundaries
+            genome_len = genome_vec.shape[0]
             tensor_start_idx = 0
             tensor_end_idx = self.fragment_size
             right_ext: int = ceil((self.fragment_size - self.kmer_size) / 2)
@@ -63,12 +66,12 @@ class GenomeTensor(object):
             if start_idx < 0:
                 tensor_start_idx = -start_idx
                 start_idx = 0
-            if end_idx > len(genome_vec):
-                tensor_end_idx = self.fragment_size - (end_idx - len(genome_vec))
-                end_idx = len(genome_vec)
+            if end_idx > genome_len:
+                tensor_end_idx = self.fragment_size - (end_idx - genome_len)
+                end_idx = genome_len
 
             # Building feature vector
-            self.tensor[i, tensor_start_idx: tensor_end_idx] = (genome_vec[start_idx: end_idx]).ravel()
+            self.tensor[i, tensor_start_idx: tensor_end_idx, :] = genome_vec[start_idx: end_idx, :]
 
         return self.tensor
 
@@ -86,28 +89,6 @@ class GenomeTensor(object):
                hasher == self.hasher
 
 
-"""
-GenomeTensor test
-
-kmer_size = 5
-n = 17
-
-for i in range(10):
-    vec = np.random.rand(20,1)
-    print("Vector is: ")
-    print(vec)
-    print("~~~~~~~~~~~~~~~~~~~~~~~")
-    print("~~~~~~~~~~~~~~~~~~~~~~~")
-    print("~~~~~~~~~~~~~~~~~~~~~~~")
-    print("tensor is: ")
-    print("!!!!!!!!!!!!!!!!!!!!!!!")
-    print("!!!!!!!!!!!!!!!!!!!!!!!")
-    print("!!!!!!!!!!!!!!!!!!!!!!!")
-    gen_tensor = GenomeTensor(kmer_size=kmer_size, n=n, hasher=hasher, genome_vec=vec)
-    print(gen_tensor.getTensor())
-"""
-
-
 class Genome(object):
     """
     This Class represents the genome in all necessary forms:
@@ -123,7 +104,8 @@ class Genome(object):
         # Initializing DataCollector
         if data_collector is None:
             self.data_collector: DataCollector = DataCollector("../accessions.tsv")
-        self.data_collector = data_collector
+        else:
+            self.data_collector = data_collector
 
         # Checks if the accession exists, if not, attempts to download it
         if not self.data_collector.exists(accession_id):
@@ -136,9 +118,11 @@ class Genome(object):
         self.vec_filepath: str = ""
         self.vec: np.ndarray = None
         self.tensor: GenomeTensor = None
-        self.base_color_stride = 6          # From deepVariant
-        self.base_color_offset_a_and_g = 4  # From deepVariant
-        self.base_color_offset_t_and_c = 5  # From deepVariant
+        self.A_vec: np.ndarray = np.array([1, 0, 0, 0])
+        self.C_vec: np.ndarray = np.array([0, 1, 0, 0])
+        self.G_vec: np.ndarray = np.array([0, 0, 1, 0])
+        self.T_vec: np.ndarray = np.array([0, 0, 0, 1])
+        self.N_vec: np.ndarray = np.array([0, 0, 0, 0])
 
     def getSeq(self):
         # Open file in "read only" mode
@@ -166,17 +150,17 @@ class Genome(object):
     def __encodeBase(self,
                      base: str):
         if base == 'A':
-            return self.base_color_offset_a_and_g + self.base_color_stride * 3
+            return self.A_vec
         elif base == 'G':
-            return self.base_color_offset_a_and_g + self.base_color_stride * 2
+            return self.G_vec
         elif base == 'T':
-            return self.base_color_offset_t_and_c + self.base_color_stride * 1
+            return self.T_vec
         elif base == 'C':
-            return self.base_color_offset_t_and_c + self.base_color_stride * 0
-        elif base == 'N':
-            return 0
+            return self.C_vec
         else:
-            assert False, "Base {} is unacceptable geonme sequence base".format(base)
+            return self.N_vec
+        #else:
+        #    assert False, "Base {} in {} is unacceptable genome sequence base".format(base, self.accession_id)
 
     def __vectorizeSeq(self):
         """
@@ -214,13 +198,14 @@ class Genome(object):
 
         # if not, vectorize
         seq = self.getSeq()
-        self.vec = np.zeros(shape=len(seq))
+        self.vec = np.zeros(shape=(len(seq), base_count))
         for i in range(len(seq)):
-            self.vec[i] = self.__encodeBase(seq[i])
+            self.vec[i, :] = self.__encodeBase(seq[i])
 
         # And serialize
         vec_file = open("../data/vectorized/" + self.accession_id + ".bin", "wb")
         vec_file.write(ndarray_to_proto(self.vec).SerializeToString())
+        vec_file.close()
 
 
     def getFeatureTensor(self,
@@ -248,16 +233,3 @@ class Genome(object):
                                    n=n,
                                    hasher=hasher)
         return self.tensor.getTensor()
-
-
-def testVectoriztion():
-    genome1 = Genome("MZ256063")
-    genome2 = Genome("OD959160")
-    print(genome1.getVectorizedSeq()[1125])
-    print(genome2.getVectorizedSeq()[1125])
-    genome_tensor = genome1.getFeatureTensor(30, 250, 100, mmh3.hash_from_buffer)
-    print("The shape of the genome tensor is: {}".format(genome_tensor.shape))
-    print(genome_tensor)
-
-
-# testVectoriztion()

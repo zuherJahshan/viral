@@ -150,7 +150,7 @@ class TestModel(unittest.TestCase):
 
         X = tf.random.uniform(shape=[n, d_model])
 
-        model = Model.SarsVitModel(N=N,
+        model = Model.CoViTModel(N=N,
                              d_out=d_out,
                              d_ff=d_ff,
                              d_key=d_key,
@@ -181,7 +181,7 @@ class TestModel(unittest.TestCase):
 
         X = tf.random.uniform(shape=[n, d_model])
 
-        model = Model.SarsVitModel(N=N,
+        model = Model.CoViTModel(N=N,
                              d_out=d_out,
                              d_ff=d_ff,
                              d_key=d_key,

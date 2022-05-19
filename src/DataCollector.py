@@ -183,7 +183,7 @@ class DataCollector(object):
     2. getSeqsByLineage - which will download the fasta sequences related to the given lineage (e.g. "B.1.1.7").
     """
     def __init__(self,
-                 all_accessions_filename: str):
+                 all_accessions_filename: str = "../accessions.tsv"):
         # Check if the file exists, if not return an exception.
         """
         The class constructor
@@ -223,8 +223,11 @@ class DataCollector(object):
         for seq in existing_seqs_list:
             self.existing_seqs.add(seq.split('.')[0])
 
+    def getAccDF(self) -> pd.DataFrame:
+        return self.acc_df
+
     def exists(self,
-               acc_id: str):
+               acc_id: str) -> bool:
         """
         simply returns True if the accession already exist in the "data/raw directory". Else returns False.
         """

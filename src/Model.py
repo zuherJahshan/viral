@@ -11,8 +11,8 @@ absl.logging.set_verbosity(absl.logging.ERROR)
 
 class Linear(tf.keras.layers.Layer):
     """
-    Linear layer, this layer receives as an input a matrix n*d_model
-    and multiply it by the parameters that resides inside the weight matrix W of dimensions d_model*units
+    Linear layer, this layer receives as an input a matrix n*d
+    and multiply it by the parameters that resides inside the weight matrix W of dimensions d*units
     after that it adds it to the bias b of size units*1.
 
     Long story short, it is just a layer that in the forward pass performs the following operation
@@ -213,7 +213,7 @@ class EncoderBlock(tf.keras.layers.Layer):
         config.update(self.getHP())
         return config
 
-class SarsVitModel(tf.keras.Model):
+class CoViTModel(tf.keras.Model):
     def __init__(self,
                  N: int = 1,    # Number of repeats of the EncoderBlock
                  d_out: int = 2,    # The number of classes
@@ -225,6 +225,7 @@ class SarsVitModel(tf.keras.Model):
                  **kwargs):
         super().__init__(**kwargs)
         self.N = N
+        self.base_embedding = Linear(units=1)
         self.encoder_blocks = [EncoderBlock(d_model=d_model,
                                             d_val=d_val,
                                             d_key=d_key,
@@ -234,7 +235,7 @@ class SarsVitModel(tf.keras.Model):
         self.out = PredictorBlock(units=d_out)
 
     def call(self, X):
-        Z = X
+        Z = self.base_embedding(X)   # X of size [batch, n, d_model, 4]
         for encoder_block in self.encoder_blocks:
             Z = encoder_block(Z)
         Z = self.norm(Z)
@@ -257,7 +258,7 @@ custom_objects = {"Linear": Linear,
                   "PredictorBlock": PredictorBlock,
                   "FeedForward": FeedForward,
                   "EncoderBlock": EncoderBlock,
-                  "SarsVitModel": SarsVitModel}
+                  "CoViTModel": CoViTModel}
 
 
 

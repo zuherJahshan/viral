@@ -48,7 +48,7 @@ def getGenomeTensorDS(acc_id_tensor: tf.Tensor) -> tf.data.Dataset:
 fragment_size: int = 250
 n: int = 100
 dataset = tf.data.Dataset.from_generator(generator=create_generator,
-                                         output_signature=tf.TensorSpec(shape=(None, fragment_size), dtype=tf.float32))
+                                         output_signature=tf.TensorSpec(shape=(None, fragment_size, 4), dtype=tf.float32))
 dataset = dataset.shuffle(1000).repeat().prefetch(1)
 old = None
 for genome_tensor in dataset:
@@ -60,8 +60,8 @@ for genome_tensor in dataset:
     else:
         cnt = 0
         for i in range(100):
-            roof = min(i + 2, 100)
-            floor = max(i - 2, 0)
+            roof = min(i + 5, 100)
+            floor = max(i - 5, 0)
             for j in range(floor, roof):
                 if np.isclose(old[i], genome_tensor[j]).all():
                     cnt += 1
