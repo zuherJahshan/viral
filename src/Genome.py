@@ -16,6 +16,11 @@ Hasher = Callable[[np.ndarray], np.uint64]
 
 base_count = 4
 
+
+class FileNotFound(Exception):
+    pass
+
+
 class GenomeTensor(object):
     def __init__(self,
                  genome_vec: np.ndarray,
@@ -89,6 +94,14 @@ class GenomeTensor(object):
                hasher == self.hasher
 
 
+# Global variables
+A_vec: np.ndarray = np.array([1, 0, 0, 0])
+C_vec: np.ndarray = np.array([0, 1, 0, 0])
+G_vec: np.ndarray = np.array([0, 0, 1, 0])
+T_vec: np.ndarray = np.array([0, 0, 0, 1])
+N_vec: np.ndarray = np.array([0, 0, 0, 0])
+
+
 class Genome(object):
     """
     This Class represents the genome in all necessary forms:
@@ -110,19 +123,14 @@ class Genome(object):
         # Checks if the accession exists, if not, attempts to download it
         if not self.data_collector.exists(accession_id):
             self.data_collector.getSeqByAcc(accession_id)
-        assert self.data_collector.exists(accession_id), \
-            "Error occurred while trying to get accession {}".format(accession_id)
+        if not self.data_collector.exists(accession_id):
+            raise FileNotFound()
 
         self.accession_id: str = accession_id
         self.seq_filepath: str = self.data_collector.getAccPath(accession_id)
         self.vec_filepath: str = ""
         self.vec: np.ndarray = None
         self.tensor: GenomeTensor = None
-        self.A_vec: np.ndarray = np.array([1, 0, 0, 0])
-        self.C_vec: np.ndarray = np.array([0, 1, 0, 0])
-        self.G_vec: np.ndarray = np.array([0, 0, 1, 0])
-        self.T_vec: np.ndarray = np.array([0, 0, 0, 1])
-        self.N_vec: np.ndarray = np.array([0, 0, 0, 0])
 
     def getSeq(self):
         # Open file in "read only" mode
@@ -150,17 +158,15 @@ class Genome(object):
     def __encodeBase(self,
                      base: str):
         if base == 'A':
-            return self.A_vec
+            return A_vec
         elif base == 'G':
-            return self.G_vec
+            return G_vec
         elif base == 'T':
-            return self.T_vec
+            return T_vec
         elif base == 'C':
-            return self.C_vec
+            return C_vec
         else:
-            return self.N_vec
-        #else:
-        #    assert False, "Base {} in {} is unacceptable genome sequence base".format(base, self.accession_id)
+            return N_vec
 
     def __vectorizeSeq(self):
         """

@@ -85,6 +85,7 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
                  d_val: int,
                  d_model: int,
                  heads: int,
+                 dropout_rate: float = 0.1,
                  **kwargs):
         super().__init__(**kwargs)
         self.heads = heads
@@ -92,7 +93,9 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
         self.lin_qry_heads = [Linear(d_key) for _ in range(self.heads)]
         self.lin_val_heads = [Linear(d_val) for _ in range(self.heads)]
         self.scaled_dot_prod_attention = ScaledDotProductAttention()
-        self.lin_out = Linear(d_model)  # Think about it
+        self.lin_out = Linear(d_model)
+        self.dropout_rate = dropout_rate
+        self.dropout = tf.keras.layers.Dropout(rate=dropout_rate)
 
     # No need for build. No independent weights are defined in this layer. Every weight is a part of an inner layer.
 
@@ -109,7 +112,7 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
                                                     V=V,
                                                     Q=Q))
         Z = tf.concat(Z, -1)
-        return self.lin_out(Z) + X
+        return self.dropout(self.lin_out(Z)) + X
 
     def compute_output_shape(self,
                              batch_input_shape):
@@ -119,7 +122,8 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
         return {"d_key": self.lin_key_heads[0].getHP()["units"],
                 "d_val": self.lin_val_heads[0].getHP()["units"],
                 "d_model": self.lin_out.getHP()["units"],
-                "heads": self.heads}
+                "heads": self.heads,
+                "dropout_rate": self.dropout_rate}
 
     def get_config(self):
         config = super().get_config()
@@ -160,17 +164,21 @@ class FeedForward(Linear):
     def __init__(self,
                  outer_units: int = 1,
                  activation: str = "relu",
+                 dropout_rate: float = 0.1,
                  **kwargs):
         super().__init__(**kwargs)
         self.activation = tf.keras.activations.get(activation)
         self.outer_layer = Linear(outer_units)
+        self.dropout_rate = dropout_rate
+        self.dropout = tf.keras.layers.Dropout(rate=dropout_rate)
 
     def call(self, X):
-        return self.outer_layer(self.activation(X@self.kernel + self.bias)) + X
+        return self.dropout(self.outer_layer(self.activation(X@self.kernel + self.bias))) + X
 
     def getHP(self):
         return {"activation": tf.keras.activations.serialize(self.activation),
-                "outer_units": self.outer_layer.getHP()["units"]}
+                "outer_units": self.outer_layer.getHP()["units"],
+                "dropout_rate": self.dropout_rate}
 
     def get_config(self):
         config = super().get_config()
@@ -185,14 +193,17 @@ class EncoderBlock(tf.keras.layers.Layer):
                  d_key: int = 1,
                  d_ff: int = 1,
                  heads: int = 1,
+                 dropout_rate: float = 0.1,
                  **kwargs):
         super().__init__(**kwargs)
         self.mha = MyMultiHeadAttention(d_val=d_val,
-                                      d_key=d_key,
-                                      d_model=d_model,
-                                      heads=heads)
+                                        d_key=d_key,
+                                        d_model=d_model,
+                                        heads=heads,
+                                        dropout_rate=dropout_rate)
         self.ff = FeedForward(outer_units=d_model,
-                              units=d_ff)  # TODO: Maybe add gelu as the activation following ViT
+                              units=d_ff,
+                              dropout_rate=dropout_rate)  # TODO: Maybe add gelu as the activation following ViT
         self.norm = tf.keras.layers.Normalization()
 
     def call(self,
@@ -222,6 +233,7 @@ class CoViTModel(tf.keras.Model):
                  d_key: int = 1,
                  d_ff: int = 1,
                  heads: int = 1,
+                 dropout_rate: float = 0.1,
                  **kwargs):
         super().__init__(**kwargs)
         self.N = N
@@ -230,7 +242,8 @@ class CoViTModel(tf.keras.Model):
                                             d_val=d_val,
                                             d_key=d_key,
                                             d_ff=d_ff,
-                                            heads=heads) for _ in range(self.N)]
+                                            heads=heads,
+                                            dropout_rate=dropout_rate) for _ in range(self.N)]
         self.norm = tf.keras.layers.Normalization()
         self.out = PredictorBlock(units=d_out)
 

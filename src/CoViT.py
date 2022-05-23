@@ -1,10 +1,15 @@
 import tensorflow as tf
 import pandas as pd
 import numpy as np
+from typing import List, Dict
 
 from DataCollector import DataCollector
-from Genome import Genome
+from Genome import Genome, FileNotFound, base_count
 from Model import CoViTModel
+
+Accession = str
+Lineage = str
+LineageAccessionsMap = Dict[Accession, Dict[str, List[Accession]]]
 
 class HyperParameters(object):
     def __init__(self):
@@ -18,7 +23,8 @@ class HyperParameters(object):
         self._d_val: int = 64            # The dimensionality of the value representation of a fragment (for self attention)
         self._d_key: int = 64            # The dimensionality of the key representation of a fragment (for self attention)
         self._heads: int = 8             # Number of heads used in the self attention layer.
-        self._d_ff: int = 2048           # Feed forward hidden layer inner number of units
+        self._d_ff: int = 2048           # Feed forward hidden layer inner number of units.
+        self._dropout_rate: float = 0.1  # Dropout rate for all sub-layers in the model
 
         self._kmer_size: int = 30        # Anchor kmer size. This hyperparameter controls the type of genome encoding
         self._n: int = 256               # Compression factor, controls the information extracted from genome to the encoding
@@ -87,6 +93,15 @@ class HyperParameters(object):
         self._d_ff = d_ff
 
     @property
+    def dropout_rate(self):
+        return self._dropout_rate
+
+    @dropout_rate.setter
+    def dropout_rate(self,
+                     dropout_rate):
+        self._dropout_rate = dropout_rate
+
+    @property
     def kmer_size(self):
         return self._kmer_size
 
@@ -114,7 +129,13 @@ class CoViT(object):
     3. loadModel
     4. setHP
     """
-    def __init__(self):
+    def __init__(self,
+                 lineages: List[str],
+                 dataset_size: str,
+                 shuffle_buffer_size: int = 1000):
+        # Random state
+        self.rs = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(133))) # 133 is an arbitrary number, can be changed
+
         # Set the DataCollector
         self.data_collector: DataCollector = DataCollector()
 
@@ -123,22 +144,104 @@ class CoViT(object):
 
         # Set hyper parameters
         self.HP: HyperParameters = HyperParameters()
+        self.HP.d_out = len(lineages)   # Number of virus classes
 
         # Set model
-        self.nn_model: tf.keras.Model = None
+        self.nn_model: tf.keras.Model = CoViTModel(N=self.HP.encoder_repeats,
+                                                   d_out=self.HP.d_out,
+                                                   d_model=self.HP.d_model,
+                                                   d_val=self.HP.d_val,
+                                                   d_key=self.HP.d_key,
+                                                   d_ff=self.HP.d_ff,
+                                                   heads=self.HP.heads,
+                                                   dropout_rate=self.HP.dropout_rate)
 
-        # Set Dataset
-        self.dataset: tf.data.Dataset = None
+        # Set Datasets
+        self.lineage_accessions_map: LineageAccessionsMap = self._getLineageAccessionsMap(lineages,
+                                                                                          dataset_size)
+        self.train_set: tf.data.Dataset =\
+            tf.data.Dataset.from_generator(generator=lambda: self._dataGenerator('train'),
+                                           output_signature=tf.TensorSpec(shape=(None,
+                                                                                 self.HP.d_model,
+                                                                                 base_count),
+                                                                          dtype=tf.float32))
+        self.train_set = self.train_set.shuffle(shuffle_buffer_size).repeat().prefetch(1)
+
+        self.valid_set: tf.data.Dataset =\
+            tf.data.Dataset.from_generator(generator=lambda: self._dataGenerator('validation'),
+                                           output_signature=tf.TensorSpec(shape=(None,
+                                                                                 self.HP.d_model,
+                                                                                 base_count),
+                                                                          dtype=tf.float32))
+        self.valid_set = self.valid_set.shuffle(shuffle_buffer_size).repeat().prefetch(1)
+
+    def _dataGenerator(self,
+                       dataset_type: str) -> tf.Tensor:
+        assert dataset_type == 'train' or dataset_type == 'validation',\
+            "dataset_type argument must be one of the two: {'train', 'validation'}"
+        lineages_cnt = len(self.lineage_accessions_map)
+        lineages_done_scanning = 0
+        while lineages_done_scanning < lineages_cnt:
+            index = 0
+            for lineage in self.lineage_accessions_map:
+                if index == len(self.lineage_accessions_map[lineage][dataset_type]):
+                    lineages_done_scanning += 1
+                    continue
+                elif index > len(self.lineage_accessions_map[lineage][dataset_type]):
+                    continue
+                acc = self.lineage_accessions_map[lineage][dataset_type][index]
+                try:
+                    genome = Genome(accession_id=acc,
+                                    data_collector=self.data_collector)
+                    genome_tensor = genome.getFeatureTensor(kmer_size=self.HP.kmer_size,
+                                                            fragment_size=self.HP.d_model,
+                                                            n=self.HP.n)
+                except FileNotFound:
+                    continue
+                yield genome_tensor
+            index += 1
+
+    def _getLineageAccessionsMap(self,
+                                 lineages: List[Lineage],
+                                 dataset_size: str) -> LineageAccessionsMap:
+        lineage_accessions_map: LineageAccessionsMap = {}
+        for lineage in lineages:
+            df = self.acc_df[self.acc_df['lineage'] == lineage]
+            df.dropna(subset=['acc', 'lineage'],
+                      inplace=True)    # TODO? change in the future
+
+            # Manipulating the accessions list
+            train_set_size = self._getDatasetSize(dataset_size)['train']
+            validation_set_size = self._getDatasetSize(dataset_size)['validation']
+            accessions = self.rs.permutation(df['acc'].values) # TODO: should check that indexing is not out of bounds
+            train_valid_accs = {'train': accessions[:train_set_size],
+                                'validation': accessions[train_set_size:validation_set_size]}
+            lineage_accessions_map.update({lineage: train_valid_accs})
+        return lineage_accessions_map
+
+
+    def _getDatasetSize(self,
+                        dataset_size: str):
+        if dataset_size == 'tiny':
+            return {'train': 160,
+                    'validation': 40}       # 80-20
+        elif dataset_size == 'small':
+            return {'train': 1600,
+                    'validation': 400}      # 80-20
+        elif dataset_size == 'medium':
+            return {'train': 16000,
+                    'validation': 4000}     # 80-20
+        elif dataset_size == 'large':
+            return {'train': 180000,
+                    'validation': 20000}    # 90-10
+        elif dataset_size == 'huge':
+            return {'train': 1900000,
+                    'validation': 100000}   # 95-5
+        else:
+            assert False,\
+                "Dataset size parameter should be one of the following: 'tiny', 'small', 'medium', 'large', 'huge'"
 
     def train(self):
-        """
-        1. choose fasta files for train set
-        2. choose fasta files for valid set
-        3. choose fasta files for test set - (optional)
-        how to choose?
-            a. The list of virus classes should be given first
-            b. the size of dataset to build tiny/small/medium/big/huge
-        """
         return
 
     def evaluate(self):
@@ -231,3 +334,4 @@ class CoViT(object):
 
 
 
+covit = CoViT(["B.1.1.7"], "tiny")
