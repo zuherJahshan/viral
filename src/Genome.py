@@ -5,6 +5,9 @@ import numpy as np
 from typing import Callable, List
 from math import ceil, floor
 
+# For debugging
+import tensorflow as tf
+
 # Third party packages
 from numproto import ndarray_to_proto, proto_to_ndarray, numproto
 import mmh3
@@ -238,4 +241,5 @@ class Genome(object):
                                    fragment_size=fragment_size,
                                    n=n,
                                    hasher=hasher)
-        return self.tensor.getTensor()
+        genome_tensor  = self.tensor.getTensor()
+        return genome_tensor

@@ -67,14 +67,25 @@ class ScaledDotProductAttention(tf.keras.layers.Layer):
              K,
              V,
              Q):
+
+        # The dimensionality of the key
         d_k = K.shape[-1]
-        last_dim = len(K.shape) - 1
+
+        # Preparing permutation of tensor
+        perm = [i for i in range(len(K.shape))]
+        tmp = perm[-1]
+        perm[-1] = perm[-2]
+        perm[-2] = tmp
+
         # Matmul
-        Z = Q @ tf.transpose(K, perm=[last_dim, last_dim-1])
+        Z = Q @ tf.transpose(K, perm=perm)
+
         # Scale
         Z = Z / math.sqrt(d_k)
+
         # SoftMax
         Z = self.softmax(Z)
+
         # Matmul with values and return
         return Z @ V
 
@@ -248,11 +259,15 @@ class CoViTModel(tf.keras.Model):
         self.out = PredictorBlock(units=d_out)
 
     def call(self, X):
-        Z = self.base_embedding(X)   # X of size [batch, n, d_model, 4]
+        Z = self.base_embedding(X)   # X of size [batch, n, d_model, 4] -> transforms to [batch, n, d_model]
+        Z = tf.squeeze(Z)
         for encoder_block in self.encoder_blocks:
             Z = encoder_block(Z)
         Z = self.norm(Z)
-        return self.out(Z)
+        Z = self.out(Z)
+        return tf.squeeze(tf.split(value=Z,
+                                   num_or_size_splits=Z.shape[-2],
+                                   axis=-2)[0])
 
     def getHP(self):
         HP = {"N": self.N}
