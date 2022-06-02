@@ -4,13 +4,13 @@ from pathlib import Path
 import numpy as np
 from typing import Callable, List
 from math import ceil, floor
+import hashlib
 
 # For debugging
 import tensorflow as tf
 
 # Third party packages
 from numproto import ndarray_to_proto, proto_to_ndarray, numproto
-import mmh3
 
 # Project packages
 from DataCollector import DataCollector
@@ -23,6 +23,14 @@ base_count = 4
 class FileNotFound(Exception):
     pass
 
+class AccessionNotFoundLocally(Exception):
+    pass
+
+def hashlib_hasher(tensor: np.ndarray):
+    byte_view = tensor.view(np.uint8)
+    hashed_str = hashlib.sha1(byte_view).hexdigest()
+    return int(hashed_str,
+               base=16)
 
 class GenomeTensor(object):
     def __init__(self,
@@ -35,11 +43,11 @@ class GenomeTensor(object):
         self.kmer_size: int = kmer_size
         self.fragment_size = fragment_size
         self.n: int = n
-        assert n < len(genome_vec)-kmer_size+1, \
+        assert n < len(genome_vec) - kmer_size + 1, \
             "the compression factor, n must be smaller or equal to the genome length = {}" \
-            .format(len(genome_vec)-kmer_size+1)
+            .format(len(genome_vec) - kmer_size + 1)
         self.hasher: Hasher = hasher
-        self.__makeTensor(genome_vec)
+        self.__makeTensor(genome_vec)   # Memory leak is in here!!!
 
     def __makeTensor(self,
                      genome_vec: np.ndarray) -> np.ndarray:
@@ -51,13 +59,14 @@ class GenomeTensor(object):
         def hasher_key(elem):
             return elem[1]
 
+
         sigs: List = []
         kmer_in_genome: int = len(genome_vec) - self.kmer_size + 1
         for i in range(kmer_in_genome):
             sigs.append((i, self.hasher(genome_vec[i: i+self.kmer_size])))  # hash and insert to the list
-        sigs.sort(key=hasher_key)
+        sigs.sort(key=hasher_key)   # sort according to hashed value
         sigs = sigs[:self.n]
-        sigs.sort(key=index_key)
+        sigs.sort(key=index_key)    # sort according to index (kmer relative position in the genome
         # print(sigs) - DEBUG
 
         # Making the tensor
@@ -123,11 +132,9 @@ class Genome(object):
         else:
             self.data_collector = data_collector
 
-        # Checks if the accession exists, if not, attempts to download it
+        # Checks if the accession exists, if not, raises an appropriate error.
         if not self.data_collector.exists(accession_id):
-            self.data_collector.getSeqByAcc(accession_id)
-        if not self.data_collector.exists(accession_id):
-            raise FileNotFound()
+           raise AccessionNotFoundLocally()
 
         self.accession_id: str = accession_id
         self.seq_filepath: str = self.data_collector.getAccPath(accession_id)
@@ -221,7 +228,7 @@ class Genome(object):
                          kmer_size: int,
                          fragment_size: int,
                          n: int,
-                         hasher: Hasher = mmh3.hash_from_buffer) -> np.ndarray:
+                         hasher: Hasher = hashlib_hasher) -> np.ndarray:
         """
         returns a created Genome tensor
         """
@@ -241,5 +248,4 @@ class Genome(object):
                                    fragment_size=fragment_size,
                                    n=n,
                                    hasher=hasher)
-        genome_tensor  = self.tensor.getTensor()
-        return genome_tensor
+        return self.tensor.getTensor()

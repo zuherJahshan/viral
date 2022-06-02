@@ -1,15 +1,12 @@
-import os
-import subprocess
 from os import path
 from os import system
 from os import listdir
 from os import remove
 from pathlib import Path
+from Types import *
 
 import pandas as pd
 from typing import List
-
-Accessions = List[str]
 
 class FastaSeqGetter(object):
     """
@@ -39,7 +36,7 @@ class FastaSeqGetter(object):
         return self.seq_files_location
 
     def getSeqs(self,
-                acc_list: Accessions):
+                acc_list: List[Accession]):
         """
         Args:
             A list of accessions as presented in the database.
@@ -233,29 +230,17 @@ class DataCollector(object):
         """
         return acc_id in self.existing_seqs
 
-    def getSeqByAcc(self,
-                    acc_id: str):
-        """
-        If the accession exists, it downloads the sequence that are related to that accession if is found in the
-        "accessions.tsv" file.
-        Args: 1. A string specifying the accession id
+    def getSeqsByAcc(self,
+                     acc_ids: List[Accession]):
+        not_existing_accs: List[Accession] = []
+        for acc_id  in acc_ids:
+            if not self.exists(acc_id):
+                not_existing_accs.append(acc_id)
 
-        Returns: None
-        """
+        if len(not_existing_accs) > 0:
+            self.seq_getter.getSeqs(not_existing_accs)
 
-        # Check accession validity (if exists)
-        if not (self.acc_df['acc'] == acc_id).any():
-            print("Accession not found")
-            return
-
-        # Check if sequence already exists (downloaded)
-        if self.exists(acc_id):
-            print("Accession {} already exists".format(acc_id))
-            return
-
-        # In case that the sequence is not downloaded already, then get it.
-        self.seq_getter.getSeqs([acc_id])
-        return
+        self.existing_seqs.update(set(not_existing_accs))
 
     def getSeqsByLineage(self,
                              lineage: str):

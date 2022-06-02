@@ -41,7 +41,8 @@ class Linear(tf.keras.layers.Layer):
 
     def call(self,
              X):
-        return X @ self.kernel + self.bias
+        Z = X @ self.kernel + self.bias
+        return Z
 
     def compute_output_shape(self,
                              batch_input_shape):
@@ -156,8 +157,9 @@ class PredictorBlock(Linear):
         super().__init__(**kwargs)
 
     def call(self, X):
-        return tf.keras.activations.softmax((X@self.kernel + self.bias),
+        z = tf.keras.activations.softmax(super().call(X),
                                             axis=-1)    # need to be changed
+        return z
 
     def get_config(self):
         base_config = super().get_config()
@@ -258,16 +260,21 @@ class CoViTModel(tf.keras.Model):
         self.norm = tf.keras.layers.Normalization()
         self.out = PredictorBlock(units=d_out)
 
+
+
+
     def call(self, X):
         Z = self.base_embedding(X)   # X of size [batch, n, d_model, 4] -> transforms to [batch, n, d_model]
-        Z = tf.squeeze(Z)
+        Z = tf.squeeze(Z,
+                       axis=[-1])
         for encoder_block in self.encoder_blocks:
             Z = encoder_block(Z)
         Z = self.norm(Z)
         Z = self.out(Z)
         return tf.squeeze(tf.split(value=Z,
                                    num_or_size_splits=Z.shape[-2],
-                                   axis=-2)[0])
+                                   axis=-2)[0],
+                          axis=[-2])
 
     def getHP(self):
         HP = {"N": self.N}
