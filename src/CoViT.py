@@ -1,13 +1,12 @@
-import tensorflow as tf
+import keras.models
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 from Types import *
-from math import ceil, floor
+from math import ceil
 
 from DataCollector import DataCollector
 from Genome import Genome, AccessionNotFoundLocally, base_count
-from Model import CoViTModel
+from Model import CoViTModel, custom_objects
 
 import absl.logging
 absl.logging.set_verbosity(absl.logging.ERROR)
@@ -28,10 +27,10 @@ class HyperParameters(object):
         self._dropout_rate: float = 0.1  # Dropout rate for all sub-layers in the model
 
         self._kmer_size: int = 30        # Anchor kmer size. This hyperparameter controls the type of genome encoding
-        self._n: int = 256               # Compression factor, controls the information extracted from genome to the encoding
+        self._n: int = 196               # Compression factor, controls the information extracted from genome to the encoding
 
         self._batch_size = 32
-        self._epochs = 1
+        self._epochs = 10
 
     @property
     def encoder_repeats(self):
@@ -157,8 +156,6 @@ class CoViTDataset(object):
         """
         Builds a tf.data.Dataset object according to the
         """
-        # Random state
-        self.rs = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(133))) # 133 is an arbitrary number, can be changed
 
         # Data collector
         self.data_collector = data_collector
@@ -181,19 +178,20 @@ class CoViTDataset(object):
     def _buildLineageAccessionMap(self,
                                   lineages):
         for lineage in lineages:
-            accs = self._getAccessions(lineage)
+            accs = self.data_collector.getAccessions(lineage)
             accs_size = len(accs)
-            devider = int(accs_size * 0.95)
+            devider = int(accs_size * 0.8)
             self.lineage_accessions_map.update({lineage: (accs[:devider], accs[devider:])})
             print("Done with lineage {} train set size is {} valid set size is {}".format(lineage, devider, accs_size-devider))
         return
 
+
     def _handleNotExistingAcc(self,
                               acc_id: Accession):
         self.not_existing_accs.append(acc_id)
-        if len(self.not_existing_accs) > 10:    # Should change to a variable
+        if len(self.not_existing_accs) >= 10:    # Should change to a variable
             self.data_collector.getSeqsByAcc(self.not_existing_accs)
-        self.not_existing_accs = []
+            self.not_existing_accs = []
 
     def _genomeGenerator(self,
                          size: int,
@@ -241,29 +239,6 @@ class CoViTDataset(object):
                                                                               axis=0))})
         self.lineage_label_map = lineage_label_map
 
-    def _flattenDFAccessions(self,
-                             df_accessions):
-        accessions = []
-        for acc_concat in df_accessions:
-            accessions += acc_concat.split(" ")
-        return accessions
-
-    def _getAccessions(self,
-                       lineage: Lineage):
-        """
-        Returns all accessions (that appear in the dataFrame) that have the lineage <lineage>.
-        """
-        acc_df = self.data_collector.getAccDF()
-        df = acc_df[acc_df['lineage'] == lineage]
-        df = df.dropna(subset=['acc', 'lineage'])
-        df_accessions = df['acc'].values   # Each elem in this list is a concatination of several accessions
-
-        # Flatten accessions
-        accessions = self._flattenDFAccessions(df_accessions)
-
-        accessions = self.rs.permutation(accessions)
-        return accessions
-
     def getTrainSet(self,
                     size: int = 1000,
                     shuffle_buffer_size: int = 100):
@@ -306,12 +281,12 @@ class CoViT(object):
     4. setHP
     """
     def __init__(self,
-                 lineages: List[Lineage],
+                 lineages: List[Lineage] = None,
                  batch_size: int = 32,
                  epochs: int = 1000):
-        # Check arguments validity
-        assert len(lineages) >= 2,\
-            "The number of accessions provided must be at least 2. But only {} provided".format(len(lineages))
+        data_collector = DataCollector()
+        if lineages == None:
+            lineages = list(data_collector.getLocalLineages())
 
         # Set hyper parameters
         self.HP: HyperParameters = HyperParameters()
@@ -320,7 +295,7 @@ class CoViT(object):
         self.HP.epochs = epochs
 
         self.dataset: CoViTDataset = CoViTDataset(lineages=lineages,
-                                                  data_collector=DataCollector(),
+                                                  data_collector=data_collector,
                                                   HP=self.HP)
 
         # Set model
@@ -334,14 +309,14 @@ class CoViT(object):
                                                    dropout_rate=self.HP.dropout_rate)
 
     def train(self,
-              size: int = 1000,
+              size: int = 1024,
               shuffle_buffer_size: int = 100):
         # Compile the model
         print("Started training")
         if self.HP.d_out == 2:
             loss = "binary_crossentropy"
         elif self.HP.d_out > 2:
-            loss = "sparse_categorical_crossentropy"
+            loss = "categorical_crossentropy"
         else:
             assert False, "The number of accessions provided must be at least 2."
         self.nn_model.compile(loss=loss,
@@ -351,23 +326,28 @@ class CoViT(object):
         # Train the model
         # Note: should not specify batch_size since generator generate batches itself.
         # https://www.tensorflow.org/api_docs/python/tf/keras/Model
-        history = self.nn_model.fit(x=self.dataset.getTrainSet(size=size,
+        return self.nn_model.fit(x=self.dataset.getTrainSet(size=size,
                                                                shuffle_buffer_size=shuffle_buffer_size),
-                                    epochs=self.HP.epochs*4,
-                                    steps_per_epoch=ceil(size/(self.HP.batch_size*256)),
-                                    verbose=1)
+                                    epochs=self.HP.epochs,
+                                    steps_per_epoch=ceil(size/(self.HP.batch_size)))
+
+    def evaluate(self,
+                 size):
+        """
+        Just evaluate the results on the training set, on the validation set.
+        """
+        results = self.nn_model.evaluate(x=self.dataset.getValidSet(size),
+                                         verbose=1)
+        print(results)  # only for debug
+        return results
+
+    def plot(self,
+             history):
         self.nn_model.summary()
         pd.DataFrame(history.history).plot(figsize=(8, 5))
         plt.grid(True)
         plt.gca().set_ylim(0, 1) # set the vertical range to [0-1]
-        plt.show()
-        return
-
-    def evaluate(self):
-        """
-        Just evaluate the results on the training set, on the validation set.
-        """
-        return
+        plt.savefig("results.png")
 
     def loadModel(self,
                   saved_model_path: str):
@@ -380,7 +360,7 @@ class CoViT(object):
         """
         There is some hyper parameters that if changed, the model should be forsaken and a new one
         """
-        return
+        return False
 
     def saveNNModel(self,
                     model_name):
@@ -398,7 +378,13 @@ class CoViT(object):
                 --> date1
                 --> date2
         """
+        self.nn_model.save(model_name)
         return
+
+    def loadNNModel(self,
+                    model_name):
+        self.nn_model = keras.models.load_model(model_name,
+                                                custom_objects=custom_objects)
 
     def setHP(self,
               encoder_repeats: int = None,
@@ -451,15 +437,17 @@ class CoViT(object):
             self._updateNNModel()
         return
 
+covit = CoViT(batch_size=64,
+              epochs=10)
 
-covit = CoViT(["B.1.1.7", "BA.1"], batch_size=64, epochs=10)
-
-cnt = 0
-
-covit.train(size=1024*256,
+# dataset is 80-20 of 8192 approx.
+covit.train(size=6592,
             shuffle_buffer_size=100)
+covit.evaluate(size=1664)
+
 """
-for obs, label in covit.dataset.getTrainSet(size=5, shuffle_buffer_size=5):
-    print(covit.nn_model.predict(obs))
-    print("~~~~~~~~~~~~~~~~~~~~~~~")
+covit.saveNNModel("first_model.nnmodel")
+covit.loadNNModel("first_model.nnmodel")
+
+covit.evaluate(size=512)
 """

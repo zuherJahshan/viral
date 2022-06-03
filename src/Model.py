@@ -157,9 +157,9 @@ class PredictorBlock(Linear):
         super().__init__(**kwargs)
 
     def call(self, X):
-        z = tf.keras.activations.softmax(super().call(X),
-                                            axis=-1)    # need to be changed
-        return z
+        Z = super().call(X)     # Z is of shape (batch_size, compression factor<n>, d_out)
+        print("===> The shape of Z inside the predictor block is {}".format(Z.shape))
+        return tf.keras.activations.softmax(Z, axis=-1)
 
     def get_config(self):
         base_config = super().get_config()
@@ -270,11 +270,12 @@ class CoViTModel(tf.keras.Model):
         for encoder_block in self.encoder_blocks:
             Z = encoder_block(Z)
         Z = self.norm(Z)
-        Z = self.out(Z)
-        return tf.squeeze(tf.split(value=Z,
-                                   num_or_size_splits=Z.shape[-2],
-                                   axis=-2)[0],
-                          axis=[-2])
+        print("passed all blocks, the shape of Z is {}".format(Z.shape))
+        Z = tf.squeeze(tf.split(value=Z,
+                                num_or_size_splits=Z.shape[-2],
+                                axis=-2)[0],
+                       axis=[-2])
+        return self.out(Z)
 
     def getHP(self):
         HP = {"N": self.N}

@@ -1,5 +1,5 @@
 # Builtin packages
-from os import path
+from os import path, remove
 from pathlib import Path
 import numpy as np
 from typing import Callable, List
@@ -208,7 +208,14 @@ class Genome(object):
             # Desirialize
             serialized_nda = numproto.NDArray()
             serialized_nda.ParseFromString(vec_file.read())
-            self.vec = proto_to_ndarray(serialized_nda)
+            try:
+                self.vec = proto_to_ndarray(serialized_nda)
+            except ValueError:
+                # Close and remove faulty file
+                vec_file.close()
+                remove(self.vec_filepath)
+                self.__vectorizeSeq()
+                return
             vec_file.close()
             return
 

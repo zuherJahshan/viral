@@ -1,9 +1,13 @@
+import os
 from os import path
 from os import system
 from os import listdir
 from os import remove
 from pathlib import Path
 from Types import *
+import numpy as np
+from math import ceil
+import pickle
 
 import pandas as pd
 from typing import List
@@ -188,6 +192,9 @@ class DataCollector(object):
         2. Initializing the set of all already existing sequences that are found in the "data/raw" directory.
         """
 
+        # Random state
+        self.rs = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(133))) # 133 is an arbitrary number, can be changed
+
         c_all_accessions_filename = all_accessions_filename + ".gz"
         if not path.isfile(all_accessions_filename):
             "The zipped file must exist"
@@ -240,7 +247,34 @@ class DataCollector(object):
         if len(not_existing_accs) > 0:
             self.seq_getter.getSeqs(not_existing_accs)
 
-        self.existing_seqs.update(set(not_existing_accs))
+        new_accs: Set = set()
+        for acc in not_existing_accs:
+            if os.path.exists(acc):
+                new_accs.add(acc)
+
+        self.existing_seqs.update(new_accs)
+
+    def _flattenDFAccessions(self,
+                             df_accessions):
+        accessions = []
+        for acc_concat in df_accessions:
+            accessions += acc_concat.split(" ")
+        return accessions
+
+    def getAccessions(self,
+                       lineage: Lineage):
+        """
+        Returns all accessions (that appear in the dataFrame) that have the lineage <lineage>.
+        """
+        df = self.acc_df[self.acc_df['lineage'] == lineage]
+        df = df.dropna(subset=['acc', 'lineage'])
+        df_accessions = df['acc'].values   # Each elem in this list is a concatination of several accessions
+
+        # Flatten accessions
+        accessions = self._flattenDFAccessions(df_accessions)
+
+        accessions = self.rs.permutation(accessions)
+        return accessions
 
     def getSeqsByLineage(self,
                              lineage: str):
@@ -252,24 +286,63 @@ class DataCollector(object):
         Returns: None
         """
 
-        lineaged_df = self.acc_df[self.acc_df['lineage'] == lineage]
-        accessions_hier = lineaged_df['acc'].values.tolist()
-
-        # Flatten the accessions
-        accessions = []
-        for acc_burst in accessions_hier:
-            print(acc_burst)
-            acc_list = acc_burst.split(" ")
-            accessions += acc_list
+        accessions = self.getAccessions(lineage)
 
         print("the accessions is of length {}".format(len(accessions)))
         fold: int = 100
         print(len(accessions))
-        cnt = 0
-        for i in range(int((len(accessions) / fold))-1):
-            cnt += 1
+
+        for i in range(ceil(len(accessions) / fold)):
             self.seq_getter.getSeqs(accessions[i*fold: (i+1)*fold])
 
+    def getLocalLineages(self) -> Set:
+        existing_lineages_filepath = '../data/existing_lineages.pkl'
+        if os.path.exists(existing_lineages_filepath):
+            with open(existing_lineages_filepath, 'rb') as f:
+                return pickle.load(f)
+        else:
+            return set()
+
+    def downloadAccessions(self,
+                           num_lineages: int = 1,
+                           min_threshold: int = 1000,
+                           max_threshold: int = 5000):
+        """
+        will download the accessions of the top lineages found that stands with more samples than
+        specified in the threshold
+
+        should deal with already downloaded lineages. now it is not dealing with it.
+        """
+
+        # list all lineages, ordered
+        lineages = set(self.acc_df['lineage'].unique().tolist())
+
+        # Get existing lineages
+        existing_lineages = self.getLocalLineages()
+
+        # discard all existing
+        lineages = lineages.difference(existing_lineages)
+
+        # for loop that downloads accessions
+        lineages_cnt = 0
+        for lineage in lineages:
+            # get accessions and test if has more accessions than threshold
+            accs = self.getAccessions(lineage)
+            if len(accs) <= min_threshold or len(accs) >= max_threshold:
+                continue
+            # Downloads the accessions
+            self.getSeqsByLineage(lineage)
+
+            # update existing_lineage file
+            existing_lineages.add(lineage)
+            if os.path.exists(existing_lineages_filepath):
+                os.remove(existing_lineages_filepath)
+            with open(existing_lineages_filepath, "wb") as f:
+                pickle.dump(existing_lineages, f)
+
+            lineages_cnt += 1
+            if lineages_cnt == num_lineages:
+                return
 
     def getAccPath(self,
                    acc_id: str):

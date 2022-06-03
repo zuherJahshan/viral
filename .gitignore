@@ -2,3 +2,4 @@ data/**
 Models/**
 **/*.log
 accessions.tsv
+data/existing_lineages.pkl
