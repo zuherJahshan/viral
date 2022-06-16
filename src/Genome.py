@@ -43,9 +43,11 @@ class GenomeTensor(object):
         self.kmer_size: int = kmer_size
         self.fragment_size = fragment_size
         self.n: int = n
-        assert n < len(genome_vec) - kmer_size + 1, \
-            "the compression factor, n must be smaller or equal to the genome length = {}" \
-            .format(len(genome_vec) - kmer_size + 1)
+        if n >= len(genome_vec) - kmer_size + 1:
+            print("the compression factor, n must be smaller or equal to the genome length = {}" \
+                  .format(len(genome_vec) - kmer_size + 1))
+            raise ValueError
+
         self.hasher: Hasher = hasher
         self.__makeTensor(genome_vec)   # Memory leak is in here!!!
 
@@ -133,7 +135,7 @@ class Genome(object):
             self.data_collector = data_collector
 
         # Checks if the accession exists, if not, raises an appropriate error.
-        if not self.data_collector.exists(accession_id):
+        if not self.data_collector.existsLocally(accession_id):
            raise AccessionNotFoundLocally()
 
         self.accession_id: str = accession_id
@@ -156,6 +158,9 @@ class Genome(object):
                 seq += line[:-1]
 
         file.close()
+        if len(seq) == 0:
+            "The length of the accession {} sequence is zero".format(self.accession_id)
+            raise ValueError
         return seq
 
     def getVectorizedSeq(self):
@@ -178,7 +183,7 @@ class Genome(object):
         else:
             return N_vec
 
-    def __vectorizeSeq(self):
+    def __vectorizeSeq(self, renew=False):
         """
         if the vec is not None, then it is already vectorized, no need to do nothing
         If it is None, then one of the two options can occur:
@@ -202,6 +207,9 @@ class Genome(object):
 
         # Check if serialized file already exists
         self.vec_filepath = vec_files_loc + self.accession_id + ".bin"
+        if renew == True:
+            remove(self.vec_filepath)
+            self.__vectorizeSeq()
         if path.exists(self.vec_filepath):
             vec_file = open(self.vec_filepath, 'rb')
 
@@ -250,9 +258,17 @@ class Genome(object):
 
         # If does not exist, or the hyperparameters hava changed. Create it.
         self.__vectorizeSeq()
-        self.tensor = GenomeTensor(genome_vec=self.vec,
-                                   kmer_size=kmer_size,
-                                   fragment_size=fragment_size,
-                                   n=n,
-                                   hasher=hasher)
+        try:
+            self.tensor = GenomeTensor(genome_vec=self.vec,
+                                       kmer_size=kmer_size,
+                                       fragment_size=fragment_size,
+                                       n=n,
+                                       hasher=hasher)
+        except ValueError:
+            self.__vectorizeSeq(renew=True)
+            self.tensor = GenomeTensor(genome_vec=self.vec,
+                                       kmer_size=kmer_size,
+                                       fragment_size=fragment_size,
+                                       n=n,
+                                       hasher=hasher)
         return self.tensor.getTensor()

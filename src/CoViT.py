@@ -17,12 +17,12 @@ class HyperParameters(object):
         These hyperparameter controls the neural network model. The default definition of those parameters are taken
         from the paper Attention is all you need.
         """
-        self._encoder_repeats: int = 1   # Number of times the encoder block is repeated
+        self._encoder_repeats: int = 4   # Number of times the encoder block is repeated
         self._d_out: int = 2             # Number of classes from which we should classify
         self._d_model: int = 256         # The dimensionality of the feature vectors also equals fragment_length
         self._d_val: int = 64            # The dimensionality of the value representation of a fragment (for self attention)
         self._d_key: int = 64            # The dimensionality of the key representation of a fragment (for self attention)
-        self._heads: int = 8             # Number of heads used in the self attention layer.
+        self._heads: int = 12             # Number of heads used in the self attention layer.
         self._d_ff: int = 2048           # Feed forward hidden layer inner number of units.
         self._dropout_rate: float = 0.1  # Dropout rate for all sub-layers in the model
 
@@ -30,7 +30,7 @@ class HyperParameters(object):
         self._n: int = 196               # Compression factor, controls the information extracted from genome to the encoding
 
         self._batch_size = 32
-        self._epochs = 10
+        self._epochs = 20
 
     @property
     def encoder_repeats(self):
@@ -178,7 +178,7 @@ class CoViTDataset(object):
     def _buildLineageAccessionMap(self,
                                   lineages):
         for lineage in lineages:
-            accs = self.data_collector.getAccessions(lineage)
+            accs = self.data_collector.getLocalAccessions(lineage)
             accs_size = len(accs)
             devider = int(accs_size * 0.8)
             self.lineage_accessions_map.update({lineage: (accs[:devider], accs[devider:])})
@@ -222,7 +222,9 @@ class CoViTDataset(object):
                     self._handleNotExistingAcc(acc_id=acc)
                     current_size += 1
                     continue
-                    pass
+                except ValueError:
+                    current_size += 1
+                    continue
                 yield genome_tensor, self.lineage_label_map[lineage]
                 current_size += 1
             index += 1
@@ -282,11 +284,16 @@ class CoViT(object):
     """
     def __init__(self,
                  lineages: List[Lineage] = None,
+                 num_lineages: int = -1,
                  batch_size: int = 32,
                  epochs: int = 1000):
         data_collector = DataCollector()
         if lineages == None:
             lineages = list(data_collector.getLocalLineages())
+            if num_lineages > 0:
+                lineages = self._chooseLineages(data_collector=data_collector,
+                                                lineages=lineages,
+                                                num_lineages=num_lineages)
 
         # Set hyper parameters
         self.HP: HyperParameters = HyperParameters()
@@ -308,6 +315,34 @@ class CoViT(object):
                                                    heads=self.HP.heads,
                                                    dropout_rate=self.HP.dropout_rate)
 
+    def _chooseLineages(self,
+                        data_collector: DataCollector,
+                        lineages: List[Lineage],
+                        num_lineages: int):
+        def lineage_key(elem):
+            return elem[0]
+
+        def count_key(elem):
+            return elem[1]
+
+        num_lineages = min(num_lineages, len(lineages))
+
+        lin_size_list: List[(Lineage, int)] = []
+        for lineage in lineages:
+            lin_size_list.append((lineage, data_collector.getLocalAccessionsCount(lineage)))
+
+        lin_size_list.sort(key=count_key,
+                           reverse=True)
+        print("====> The chosen lineages are: <====")
+        print(lin_size_list[:num_lineages])
+
+        chosen_lins = []
+        for i in range(num_lineages):
+            chosen_lins.append(lin_size_list[i][0])
+
+        return chosen_lins[:num_lineages]
+
+
     def train(self,
               size: int = 1024,
               shuffle_buffer_size: int = 100):
@@ -319,8 +354,12 @@ class CoViT(object):
             loss = "categorical_crossentropy"
         else:
             assert False, "The number of accessions provided must be at least 2."
+        metrics = [tf.keras.metrics.TopKCategoricalAccuracy(k=1),
+                   tf.keras.metrics.TopKCategoricalAccuracy(k=2),
+                   tf.keras.metrics.TopKCategoricalAccuracy(k=5)
+                   ]
         self.nn_model.compile(loss=loss,
-                              optimizer="Adam",
+                              optimizer=tf.keras.optimizers.Adam(clipnorm=1.0),
                               metrics=["accuracy"])  # the optimizer will change after debugging
 
         # Train the model
@@ -437,17 +476,38 @@ class CoViT(object):
             self._updateNNModel()
         return
 
-covit = CoViT(batch_size=64,
-              epochs=10)
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+num_lineages = 5
+samples_per_lineage = 64
+valid_cut = 0.2
+batch_size = 64
+epochs = 1
+
+"""
+covit = CoViT(batch_size=batch_size,
+              num_lineages=num_lineages,
+              epochs=epochs)
+
+train_size = int((1-valid_cut)*num_lineages*samples_per_lineage)
+valid_size = int(valid_cut*num_lineages*samples_per_lineage)
 
 # dataset is 80-20 of 8192 approx.
-covit.train(size=6592,
-            shuffle_buffer_size=100)
-covit.evaluate(size=1664)
+history = covit.train(size=train_size,
+                      shuffle_buffer_size=100)
+covit.plot(history)
+covit.evaluate(size=valid_size)
 
-"""
 covit.saveNNModel("first_model.nnmodel")
-covit.loadNNModel("first_model.nnmodel")
 
-covit.evaluate(size=512)
+print("loading the model")
+covit2 = CoViT(batch_size=batch_size,
+               num_lineages=num_lineages,
+               epochs=epochs)
+covit2.loadNNModel("first_model.nnmodel")
+covit.evaluate(size=valid_size)
 """
+covit = CoViT(batch_size=batch_size,
+              num_lineages=num_lineages,
+              epochs=epochs)

@@ -49,9 +49,10 @@ class Linear(tf.keras.layers.Layer):
         return tf.TensorShape(batch_input_shape.as_list()[:-1] +
                               [self.units])    # batch shape, n, units
 
-
     def getHP(self):
-        return {"units": self.units}
+        return {
+            "units": self.units
+        }
 
     def get_config(self):
         config = super().get_config()
@@ -131,11 +132,13 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
         return tf.TensorShape(batch_input_shape)
 
     def getHP(self):
-        return {"d_key": self.lin_key_heads[0].getHP()["units"],
-                "d_val": self.lin_val_heads[0].getHP()["units"],
-                "d_model": self.lin_out.getHP()["units"],
-                "heads": self.heads,
-                "dropout_rate": self.dropout_rate}
+        return {
+            "d_key": self.lin_key_heads[0].getHP()["units"],
+            "d_val": self.lin_val_heads[0].getHP()["units"],
+            "d_model": self.lin_out.getHP()["units"],
+            "heads": self.heads,
+            "dropout_rate": self.dropout_rate
+        }
 
     def get_config(self):
         config = super().get_config()
@@ -161,6 +164,9 @@ class PredictorBlock(Linear):
         print("===> The shape of Z inside the predictor block is {}".format(Z.shape))
         return tf.keras.activations.softmax(Z, axis=-1)
 
+    def getHP(self):
+        return super().getHP()
+
     def get_config(self):
         base_config = super().get_config()
         return {**base_config}
@@ -180,6 +186,7 @@ class FeedForward(Linear):
                  dropout_rate: float = 0.1,
                  **kwargs):
         super().__init__(**kwargs)
+        self.activation_name = activation
         self.activation = tf.keras.activations.get(activation)
         self.outer_layer = Linear(outer_units)
         self.dropout_rate = dropout_rate
@@ -189,9 +196,13 @@ class FeedForward(Linear):
         return self.dropout(self.outer_layer(self.activation(X@self.kernel + self.bias))) + X
 
     def getHP(self):
-        return {"activation": tf.keras.activations.serialize(self.activation),
-                "outer_units": self.outer_layer.getHP()["units"],
-                "dropout_rate": self.dropout_rate}
+        hp = super().getHP()
+        hp.update({
+            "activation": self.activation_name,
+            "outer_units": self.outer_layer.getHP()["units"],
+            "dropout_rate": self.dropout_rate,
+        })
+        return hp
 
     def get_config(self):
         config = super().get_config()
@@ -228,9 +239,11 @@ class EncoderBlock(tf.keras.layers.Layer):
         return Z
 
     def getHP(self):
-        HP = self.mha.getHP()
-        HP.update(self.ff.getHP())
-        return HP
+        hp = self.mha.getHP()
+        hp.update({
+            "d_ff": self.ff.getHP()["units"]
+        })
+        return hp
 
     def get_config(self):
         config = super().get_config()
@@ -277,15 +290,13 @@ class CoViTModel(tf.keras.Model):
                        axis=[-2])
         return self.out(Z)
 
-    def getHP(self):
-        HP = {"N": self.N}
-        HP.update(self.encoder_blocks[0].getHP())
-        HP.update(self.out.getHP())
-        return HP
-
     def get_config(self):
         config = super().get_config()
-        config.update(self.getHP())
+        config.update({
+            "N": self.N,
+            "d_out": self.out.getHP()["units"]
+        })
+        config.update(self.encoder_blocks[0].getParams())
         return config
 
 custom_objects = {"Linear": Linear,
@@ -295,16 +306,3 @@ custom_objects = {"Linear": Linear,
                   "FeedForward": FeedForward,
                   "EncoderBlock": EncoderBlock,
                   "CoViTModel": CoViTModel}
-
-
-
-
-
-
-"""
-TODO: 
-    1. Fix get_config's and try saving the model to see that it works. Done
-    2. Try to include GPU in calculations
-    3. Parallelize MultiHeadAttention loop.
-    4. Work on training loop.
-"""
