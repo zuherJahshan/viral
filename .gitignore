@@ -1,5 +1,5 @@
 data/**
-Models/**
+Projects/**
 **/*.log
 accessions.tsv
 data/existing_lineages.pkl

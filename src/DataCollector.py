@@ -216,6 +216,12 @@ class DataCollector(object):
                'TAXON': str,
                'coverage': float,
                'phylogeny': str}
+        # Create data/raw directory if needed
+        raw_data_path = "../data/raw"
+        if not os.path.isdir(raw_data_path):
+            Path(raw_data_path).mkdir(parents=True,
+                                      exist_ok=True)
+
         self.acc_df = pd.read_csv(all_accessions_filename, delimiter='\t', dtype=dtype)
         self.existing_lineages_filepath = "../data/existing_lineages.pkl"
 

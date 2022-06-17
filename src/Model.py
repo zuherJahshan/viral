@@ -296,7 +296,7 @@ class CoViTModel(tf.keras.Model):
             "N": self.N,
             "d_out": self.out.getHP()["units"]
         })
-        config.update(self.encoder_blocks[0].getParams())
+        config.update(self.encoder_blocks[0].getHP())
         return config
 
 custom_objects = {"Linear": Linear,

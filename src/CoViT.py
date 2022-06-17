@@ -1,8 +1,13 @@
+import pickle
+
 import keras.models
 import pandas as pd
 import matplotlib.pyplot as plt
 from Types import *
 from math import ceil
+from enum import Enum
+import os
+from pathlib import Path
 
 from DataCollector import DataCollector
 from Genome import Genome, AccessionNotFoundLocally, base_count
@@ -11,13 +16,14 @@ from Model import CoViTModel, custom_objects
 import absl.logging
 absl.logging.set_verbosity(absl.logging.ERROR)
 
+
 class HyperParameters(object):
     def __init__(self):
         """
         These hyperparameter controls the neural network model. The default definition of those parameters are taken
         from the paper Attention is all you need.
         """
-        self._encoder_repeats: int = 4   # Number of times the encoder block is repeated
+        self._encoder_repeats: int = 8   # Number of times the encoder block is repeated
         self._d_out: int = 2             # Number of classes from which we should classify
         self._d_model: int = 256         # The dimensionality of the feature vectors also equals fragment_length
         self._d_val: int = 64            # The dimensionality of the value representation of a fragment (for self attention)
@@ -27,7 +33,7 @@ class HyperParameters(object):
         self._dropout_rate: float = 0.1  # Dropout rate for all sub-layers in the model
 
         self._kmer_size: int = 30        # Anchor kmer size. This hyperparameter controls the type of genome encoding
-        self._n: int = 196               # Compression factor, controls the information extracted from genome to the encoding
+        self._n: int = 256 + 32          # Compression factor, controls the information extracted from genome to the encoding
 
         self._batch_size = 32
         self._epochs = 20
@@ -140,6 +146,22 @@ class HyperParameters(object):
                epochs):
         self._epochs = epochs
 
+    def save(self,
+             project_name: str):
+        file_name = project_name + "hyperparameters.pickle"
+        with open(file_name, 'wb') as outp:
+            pickle.dump(self,
+                        outp,
+                        pickle.HIGHEST_PROTOCOL)
+
+
+
+def loadHP(project_name: str) -> HyperParameters:
+        file_name = project_name + "hyperparameters.pickle"
+        with open(file_name, "rb") as inp:
+            return pickle.load(inp)
+
+
 class CoViTDataset(object):
     """
     The Dataset is initialized by specifying a list of "of interest" lineages to classify and the relevant size of
@@ -152,7 +174,8 @@ class CoViTDataset(object):
     def __init__(self,
                  lineages: List[Lineage],
                  data_collector: DataCollector,
-                 HP: HyperParameters):
+                 HP: HyperParameters,
+                 lineage_label_map: LineageLabelMap):
         """
         Builds a tf.data.Dataset object according to the
         """
@@ -160,20 +183,19 @@ class CoViTDataset(object):
         # Data collector
         self.data_collector = data_collector
 
-        # For all lineage that could be found in the dataframe from the data_collector, we get
+        # Build {lineage: local accessions of lineage}
         self.lineage_accessions_map: LineageAccessionsMap = {}
         self._buildLineageAccessionMap(lineages=lineages)
 
-        # Not existing accessions
-        self.not_existing_accs: List[Accession] = []
+        self.lineages: List = lineages    # The list of lineages
 
-        self.activated_lineages: List = lineages
-
-        # Build lineage label map, those are not corresponding to all lineages, rather they are those lineages given by the user.
-        self.lineage_label_map: LineageLabelMap = {}
-        self._buildLineageLabelMap(lineages=lineages)
+        # Build lineage label map.
+        self.lineage_label_map: LineageLabelMap = lineage_label_map
 
         self.HP = HP
+
+    def getLineages(self) -> List[Lineage]:
+        return self.lineages
 
     def _buildLineageAccessionMap(self,
                                   lineages):
@@ -186,26 +208,19 @@ class CoViTDataset(object):
         return
 
 
-    def _handleNotExistingAcc(self,
-                              acc_id: Accession):
-        self.not_existing_accs.append(acc_id)
-        if len(self.not_existing_accs) >= 10:    # Should change to a variable
-            self.data_collector.getSeqsByAcc(self.not_existing_accs)
-            self.not_existing_accs = []
-
     def _genomeGenerator(self,
                          size: int,
                          dataset_type: str = 'train'):
         current_size = 0    # Already sampled examples
         lineages_done = 0   # Count of all lineages that generated all possible examples
-        lineages_cnt = len(self.activated_lineages)
+        lineages_cnt = len(self.lineages)
         index = 0   # all lineages iteration sample index
         if dataset_type == 'train':
             dataset = 0
         else:
             dataset = 1
         while lineages_done < lineages_cnt and current_size < size:
-            for lineage in self.activated_lineages:
+            for lineage in self.lineages:
                 if index == len(self.lineage_accessions_map[lineage][dataset]): # if there are no more examples from lineage.
                     lineages_done += 1
                     continue
@@ -218,28 +233,12 @@ class CoViTDataset(object):
                     genome_tensor = genome.getFeatureTensor(kmer_size=self.HP.kmer_size,
                                                             fragment_size=self.HP.d_model,
                                                             n=self.HP.n)
-                except AccessionNotFoundLocally:
-                    self._handleNotExistingAcc(acc_id=acc)
-                    current_size += 1
-                    continue
                 except ValueError:
                     current_size += 1
                     continue
                 yield genome_tensor, self.lineage_label_map[lineage]
                 current_size += 1
             index += 1
-
-    def _buildLineageLabelMap(self,
-                              lineages: List[Lineage]) -> LineageLabelMap:
-        lineages_copy = lineages.copy()
-        lineages_copy.sort()
-        lineage_label_map: LineageLabelMap = {}
-        num_of_lineages = len(lineages_copy)
-        for i in range(num_of_lineages):
-            lineage_label_map.update({lineages_copy[i]: tf.squeeze(tf.one_hot(indices=[i],
-                                                                              depth=num_of_lineages,
-                                                                              axis=0))})
-        self.lineage_label_map = lineage_label_map
 
     def getTrainSet(self,
                     size: int = 1000,
@@ -282,28 +281,135 @@ class CoViT(object):
     3. loadModel
     4. setHP
     """
+    class ProjectMode(Enum):
+        LOAD = 1
+        CREATE = 2
+
     def __init__(self,
-                 lineages: List[Lineage] = None,
-                 num_lineages: int = -1,
-                 batch_size: int = 32,
-                 epochs: int = 1000):
-        data_collector = DataCollector()
-        if lineages == None:
-            lineages = list(data_collector.getLocalLineages())
-            if num_lineages > 0:
-                lineages = self._chooseLineages(data_collector=data_collector,
-                                                lineages=lineages,
-                                                num_lineages=num_lineages)
+                 project_name: str,
+                 project_mode: ProjectMode = ProjectMode.CREATE):
+
+        self.all_projects_path = "../Projects/"
+        self.project_path = None
+        self._setProjectPath(project_name=project_name)
+
+        if project_mode == CoViT.ProjectMode.CREATE:
+            self._createProject()
+
+        self.data_collector = DataCollector()
 
         # Set hyper parameters
         self.HP: HyperParameters = HyperParameters()
-        self.HP.d_out = len(lineages)   # Number of virus classes
+
+        self.dataset: CoViTDataset = None
+        self.nn_model: tf.keras.Model = None
+
+        self.lineages_is_set: bool = False
+        self.lineages: List[Lineage] = None
+        self.lineage_label_map: LineageLabelMap = None
+
+        if project_mode == CoViT.ProjectMode.LOAD:
+            self.load()
+
+
+    def _setProjectPath(self,
+                        project_name: str):
+        self.project_path: str = self.all_projects_path + project_name + "/"
+
+    def _createProject(self):
+
+        # Check if project allready exists, if yes please except with an error. If no,
+        # please create a new project
+        if not os.path.isdir(self.project_path):
+            Path(self.project_path).mkdir(parents=True,
+                                          exist_ok=True)
+        else:
+            print("A project with the name: \"{}\" already exists.".format(self.project_path))
+            raise ValueError()
+
+
+    def _setLineages(self,
+                    lineages: List[Lineage]):
+        # If the list of lineages is not given, takes lineages to be every lineage available locally.
+        if lineages == None:
+            self.lineages = list(self.data_collector.getLocalLineages())
+            print("The number of lineages are: {}".format(len(self.lineages)))
+            for lin in self.lineages:
+                print(lin)
+        else:
+            self.lineages = lineages
+        self._buildLineageLabelMap()
+
+    def _buildLineageLabelMap(self) -> LineageLabelMap:
+        lineages_copy = self.lineages.copy()
+        lineages_copy.sort()
+        lineage_label_map: LineageLabelMap = {}
+        num_of_lineages = len(lineages_copy)
+        for i in range(num_of_lineages):
+            lineage_label_map.update({lineages_copy[i]: tf.squeeze(tf.one_hot(indices=[i],
+                                                                              depth=num_of_lineages,
+                                                                              axis=0))})
+        self.lineage_label_map = lineage_label_map
+
+
+    def downloadData(self,
+                     lineages: List[Lineage] = None,
+                     min_samples_per_lin: int = 128,
+                     max_samples_per_lin: int = 512):
+        """
+        If lineages list is specified and not equal to None, than min_samples_per_lin is discarded.
+        """
+
+        # If lineages is not provided, then downloads every lineage that
+        # has a number of samples that is above the threshold
+        if lineages == None:
+            lineages = self.data_collector.getLineagesAboveThresh(thresh=min_samples_per_lin)
+
+        for lin in lineages:
+            self.data_collector.downloadSeqsByLineage(lineage=lin,
+                                                      amount=max_samples_per_lin)
+
+    def buildDataset(self,
+                     lineages: List[Lineage] = None,
+                     epochs: int = 1,
+                     batch_size: int = 32):
+        # TODO: First, check if there exist any local data
+
+        if self.lineages_is_set is False:
+            self._setLineages(lineages)
+            self.lineages_is_set = True
+
+        # Update the HPs
+        self.HP.d_out = len(self.lineages)   # Number of virus classes
         self.HP.batch_size = batch_size
         self.HP.epochs = epochs
 
-        self.dataset: CoViTDataset = CoViTDataset(lineages=lineages,
-                                                  data_collector=data_collector,
-                                                  HP=self.HP)
+        # Build the dataset
+        self.dataset: CoViTDataset = CoViTDataset(lineages=self.lineages,
+                                                  data_collector=self.data_collector,
+                                                  HP=self.HP,
+                                                  lineage_label_map=self.lineage_label_map)
+
+    def buildNNModel(self,
+                     lineages: List[Lineage] = None):
+
+        """
+        Must have a dataset before starting the train process, so because the lineages are saved in the
+        dataset datastructure, the current functionality of this function does not pose any issue.
+        But what will happen when you will only predict with no training?
+        You should hold the lineage to label map in here, and give it tok the dataset in inheritance.
+
+        So giving the lineages is necessary for building the model!
+        Both the buildModel and also the buildDataset functionalities must take lineages as arguments
+        and the list of lineages MUST be saved in the high level model CoViT. Remember,
+        not only the list but also the LineageLabelMap.
+        """
+
+        if self.lineages_is_set is False:
+            self._setLineages(lineages)
+            self.lineages_is_set = True
+
+        self.HP.d_out = len(self.lineages)
 
         # Set model
         self.nn_model: tf.keras.Model = CoViTModel(N=self.HP.encoder_repeats,
@@ -315,6 +421,7 @@ class CoViT(object):
                                                    heads=self.HP.heads,
                                                    dropout_rate=self.HP.dropout_rate)
 
+    # Currently not in use, but may become handy, DO NOT REMOVE
     def _chooseLineages(self,
                         data_collector: DataCollector,
                         lineages: List[Lineage],
@@ -346,6 +453,10 @@ class CoViT(object):
     def train(self,
               size: int = 1024,
               shuffle_buffer_size: int = 100):
+        if self.dataset == None:
+            print("Before training, you should build the dataset, consider using \"buildDataset\"")
+            return None
+
         # Compile the model
         print("Started training")
         if self.HP.d_out == 2:
@@ -366,9 +477,9 @@ class CoViT(object):
         # Note: should not specify batch_size since generator generate batches itself.
         # https://www.tensorflow.org/api_docs/python/tf/keras/Model
         return self.nn_model.fit(x=self.dataset.getTrainSet(size=size,
-                                                               shuffle_buffer_size=shuffle_buffer_size),
-                                    epochs=self.HP.epochs,
-                                    steps_per_epoch=ceil(size/(self.HP.batch_size)))
+                                                            shuffle_buffer_size=shuffle_buffer_size),
+                                 epochs=self.HP.epochs,
+                                 steps_per_epoch=ceil(size/(self.HP.batch_size)))
 
     def evaluate(self,
                  size):
@@ -388,21 +499,7 @@ class CoViT(object):
         plt.gca().set_ylim(0, 1) # set the vertical range to [0-1]
         plt.savefig("results.png")
 
-    def loadModel(self,
-                  saved_model_path: str):
-        """
-        given a saved model, just load it in. For a reference see how it is done in the TestModel file
-        """
-        return
-
-    def _updateNNModel(self):
-        """
-        There is some hyper parameters that if changed, the model should be forsaken and a new one
-        """
-        return False
-
-    def saveNNModel(self,
-                    model_name):
+    def save(self):
         """
         Saves the model, maybe a model name should not be given,
         else only saves the model according to HP and date.
@@ -417,13 +514,45 @@ class CoViT(object):
                 --> date1
                 --> date2
         """
-        self.nn_model.save(model_name)
+        # Save Hyperparameters, to generate them back
+        self.HP.save(self.project_path)
+
+        # Save lineages to generate the dataset back
+        self._saveLineages()
+
+        # Save Neural network model, to train it, or classify with it
+        model_path = self.project_path + "nnmodel"
+        self.nn_model.save(model_path)
         return
 
-    def loadNNModel(self,
-                    model_name):
-        self.nn_model = keras.models.load_model(model_name,
+    def _saveLineages(self):
+        with open(self.project_path + "lineages.pickle", "wb") as outp:
+            pickle.dump(self.lineages,
+                        outp,
+                        pickle.HIGHEST_PROTOCOL)
+
+    def _loadLineages(self) -> List[Lineage]:
+        with open(self.project_path + "lineages.pickle", "rb") as inp:
+            lineages = pickle.load(inp)
+        return lineages
+
+    def load(self):
+        # Load lineages to set them back and create the dataset (creating the dataset is optional
+        # if you do not the train, there is no point reverting the dataset)
+        if self.lineages_is_set:
+            print("Warining: loading model on an existing model, as a result the current model will be deleted.")
+        self._setLineages(self._loadLineages())
+        self.lineages_is_set = True
+        self.buildDataset(lineages=self.lineages,
+                          batch_size=self.HP.batch_size)
+
+        # Load Hyper parameters
+        self.HP = loadHP(self.project_path)
+
+        model_path = self.project_path + "nnmodel"
+        self.nn_model = keras.models.load_model(model_path,
                                                 custom_objects=custom_objects)
+        # TODO add lineages
 
     def setHP(self,
               encoder_repeats: int = None,
@@ -476,8 +605,6 @@ class CoViT(object):
             self._updateNNModel()
         return
 
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 num_lineages = 5
 samples_per_lineage = 64
@@ -508,6 +635,3 @@ covit2 = CoViT(batch_size=batch_size,
 covit2.loadNNModel("first_model.nnmodel")
 covit.evaluate(size=valid_size)
 """
-covit = CoViT(batch_size=batch_size,
-              num_lineages=num_lineages,
-              epochs=epochs)
