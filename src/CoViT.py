@@ -23,19 +23,19 @@ class HyperParameters(object):
         These hyperparameter controls the neural network model. The default definition of those parameters are taken
         from the paper Attention is all you need.
         """
-        self._encoder_repeats: int = 8   # Number of times the encoder block is repeated
+        self._encoder_repeats: int = 4   # Number of times the encoder block is repeated
         self._d_out: int = 2             # Number of classes from which we should classify
         self._d_model: int = 256         # The dimensionality of the feature vectors also equals fragment_length
         self._d_val: int = 64            # The dimensionality of the value representation of a fragment (for self attention)
         self._d_key: int = 64            # The dimensionality of the key representation of a fragment (for self attention)
-        self._heads: int = 12             # Number of heads used in the self attention layer.
+        self._heads: int = 12            # Number of heads used in the self attention layer.
         self._d_ff: int = 2048           # Feed forward hidden layer inner number of units.
         self._dropout_rate: float = 0.1  # Dropout rate for all sub-layers in the model
 
-        self._kmer_size: int = 30        # Anchor kmer size. This hyperparameter controls the type of genome encoding
-        self._n: int = 256 + 32          # Compression factor, controls the information extracted from genome to the encoding
+        self._kmer_size: int = 20        # Anchor kmer size. This hyperparameter controls the type of genome encoding
+        self._n: int = 128 + 64          # Compression factor, controls the information extracted from genome to the encoding
 
-        self._batch_size = 32
+        self._batch_size = 64
         self._epochs = 20
 
     @property
@@ -253,8 +253,11 @@ class CoViTDataset(object):
                                                              tf.TensorSpec(shape=(self.HP.d_out),
                                                                            dtype=tf.float32)))
         # Output signature is expected to be a tupple of observation and prediction.
-        train_set = train_set.shuffle(shuffle_buffer_size).repeat(self.HP.epochs).\
-            batch(self.HP.batch_size).prefetch(tf.data.experimental.AUTOTUNE)
+        train_set = train_set.shuffle(shuffle_buffer_size).\
+            repeat(self.HP.epochs).\
+            batch(self.HP.batch_size,
+                  num_parallel_calls=tf.data.AUTOTUNE).\
+            prefetch(tf.data.experimental.AUTOTUNE)
         return train_set
 
     def getValidSet(self,
