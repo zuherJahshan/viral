@@ -1,5 +1,6 @@
 data/**
-Projects/**
+Projects/*/Dataset/Train
+Projects/*/Dataset/Valid
 **/*.log
 accessions.tsv
 data/existing_lineages.pkl

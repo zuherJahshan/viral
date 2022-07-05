@@ -66,7 +66,11 @@ class Dataset(object):
         # Check if dataset already exist in the project, if so, print a message and return.
         if os.path.isdir(self.dataset_path):
             self.hps = loadDatasetHPs(dataset_path=self.dataset_path)
-            return
+            if self._doesSamplesExist():
+                return
+            else:
+                self.hps.updateSizes(train_size=0,
+                                     valid_size=0)
 
         assert hps != None, \
             "Must provide Hyper parameters for building the dataset via hps."
@@ -130,6 +134,9 @@ class Dataset(object):
     #######################################
     #######Private member functions########
     #######################################
+    def _doesSamplesExist(self):
+        return os.path.exists(self.dataset_path + "Train/")
+
     def _serializeLineage(self,
                          lineage: Lineage) -> Tuple[int, int]:
         # Get local accessions set of the lineage

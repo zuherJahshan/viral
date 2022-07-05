@@ -29,8 +29,6 @@ class CovitProject(object):
                                         data_collector=self.data_collector,
                                         hps=dataset_hps)
 
-        pass
-
     def addNNModel(self,
                    name: str,
                    nnmodel_hps = NNModelHPs) -> bool:
