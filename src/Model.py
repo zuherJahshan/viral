@@ -30,7 +30,7 @@ class Linear(tf.keras.layers.Layer):
         self.kernel = self.add_weight(
             name="kernel",
             shape=[batch_input_shape[-1], self.units],
-            initializer="glorot_normal" # TODO: check initializers
+            initializer="glorot_normal"
         )
         self.bias = self.add_weight(
             name="bias",
@@ -125,7 +125,7 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
                                                     V=V,
                                                     Q=Q))
         Z = tf.concat(Z, -1)
-        return self.dropout(self.lin_out(Z)) + X
+        return self.dropout(self.lin_out(Z) + X)
 
     def compute_output_shape(self,
                              batch_input_shape):
@@ -161,7 +161,6 @@ class PredictorBlock(Linear):
 
     def call(self, X):
         Z = super().call(X)     # Z is of shape (batch_size, compression factor<n>, d_out)
-        print("===> The shape of Z inside the predictor block is {}".format(Z.shape))
         return tf.keras.activations.softmax(Z, axis=-1)
 
     def getHP(self):
@@ -193,7 +192,7 @@ class FeedForward(Linear):
         self.dropout = tf.keras.layers.Dropout(rate=dropout_rate)
 
     def call(self, X):
-        return self.dropout(self.outer_layer(self.activation(X@self.kernel + self.bias))) + X
+        return self.dropout(self.outer_layer(self.activation(X@self.kernel + self.bias)) + X)
 
     def getHP(self):
         hp = super().getHP()
@@ -228,13 +227,14 @@ class EncoderBlock(tf.keras.layers.Layer):
         self.ff = FeedForward(outer_units=d_model,
                               units=d_ff,
                               dropout_rate=dropout_rate)  # TODO: Maybe add gelu as the activation following ViT
-        self.norm = tf.keras.layers.Normalization()
+        self.norm1 = tf.keras.layers.LayerNormalization()
+        self.norm2 = tf.keras.layers.LayerNormalization()
 
     def call(self,
              X):
-        Z = self.norm(X)
+        Z = self.norm1(X)
         Z = self.mha(Z)
-        Z = self.norm(Z)
+        Z = self.norm2(Z)
         Z = self.ff(Z)
         return Z
 
@@ -270,11 +270,8 @@ class CoViTModel(tf.keras.Model):
                                             d_ff=d_ff,
                                             heads=heads,
                                             dropout_rate=dropout_rate) for _ in range(self.N)]
-        self.norm = tf.keras.layers.Normalization()
+        self.norm = tf.keras.layers.LayerNormalization()
         self.out = PredictorBlock(units=d_out)
-
-
-
 
     def call(self, X):
         Z = self.base_embedding(X)   # X of size [batch, n, d_model, 4] -> transforms to [batch, n, d_model]
@@ -283,7 +280,6 @@ class CoViTModel(tf.keras.Model):
         for encoder_block in self.encoder_blocks:
             Z = encoder_block(Z)
         Z = self.norm(Z)
-        print("passed all blocks, the shape of Z is {}".format(Z.shape))
         Z = tf.squeeze(tf.split(value=Z,
                                 num_or_size_splits=Z.shape[-2],
                                 axis=-2)[0],
@@ -298,6 +294,28 @@ class CoViTModel(tf.keras.Model):
         })
         config.update(self.encoder_blocks[0].getHP())
         return config
+
+class JensenShannonLoss(tf.keras.losses.Loss):
+    def __init__(self,
+                 pi: float = 0.1,
+                 **kwargs):
+        self.pi = pi
+        self.kl = tf.keras.losses.KLDivergence(reduction=tf.keras.losses.Reduction.NONE)
+        super().__init__(**kwargs)
+
+    def call(self,
+             y_true,
+             y_pred):
+        pi1 = self.pi
+        pi2 = 1 - pi1
+        m = pi1 * y_true + pi2 * y_pred
+        djs = pi1 * self.kl(y_true, m) + pi2 * self.kl(y_pred, m)
+        z = -pi2 * tf.math.log(pi2)
+        return djs / z
+
+    def get_config(self):
+        base_config = super().get_config()
+        return {**base_config, "pi": self.pi}
 
 custom_objects = {"Linear": Linear,
                   "ScaledDotProductAttention": ScaledDotProductAttention,

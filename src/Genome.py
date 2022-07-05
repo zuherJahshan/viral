@@ -1,19 +1,12 @@
 # Builtin packages
-from os import path, remove
-from pathlib import Path
 import numpy as np
 from typing import Callable, List
 from math import ceil, floor
 import hashlib
-
-# For debugging
-import tensorflow as tf
-
-# Third party packages
-from numproto import ndarray_to_proto, proto_to_ndarray, numproto
+from Types import *
 
 # Project packages
-from DataCollector import DataCollector
+from DataCollector import DataCollectorv2
 
 Hasher = Callable[[np.ndarray], np.uint64]
 
@@ -49,11 +42,13 @@ class GenomeTensor(object):
             raise ValueError
 
         self.hasher: Hasher = hasher
-        self.__makeTensor(genome_vec)   # Memory leak is in here!!!
+        self.__makeTensor(genome_vec)
 
     def __makeTensor(self,
                      genome_vec: np.ndarray) -> np.ndarray:
-
+        """
+        The tensor is made according to the minhash scheme.
+        """
         # Finding the encoding of the genome vector
         def index_key(elem):
             return elem[0]
@@ -62,17 +57,23 @@ class GenomeTensor(object):
             return elem[1]
 
 
+        # Generate the list of all kmers signatures
         sigs: List = []
         kmer_in_genome: int = len(genome_vec) - self.kmer_size + 1
+
+        # Iterate over kmers in genome
         for i in range(kmer_in_genome):
-            sigs.append((i, self.hasher(genome_vec[i: i+self.kmer_size])))  # hash and insert to the list
-        sigs.sort(key=hasher_key)   # sort according to hashed value
+            # hash and insert to the list O(hash operation)
+            sigs.append((i, self.hasher(genome_vec[i: i+self.kmer_size])))
+        # sort according to hashed value - O(genome_length*log(genome_length)) where n is the sequence length, in covid case 30000*log30000
+        sigs.sort(key=hasher_key)
+
+        # Take the smallest n kmers.
         sigs = sigs[:self.n]
         sigs.sort(key=index_key)    # sort according to index (kmer relative position in the genome
-        # print(sigs) - DEBUG
 
-        # Making the tensor
-        self.tensor = np.zeros(shape=(self.n, self.fragment_size, base_count))
+        # Generate the tensor
+        self.tensor = np.zeros(shape=(self.n, self.fragment_size, base_count), dtype=np.int8)
         for i in range(self.n):
             # Deciding boundaries
             genome_len = genome_vec.shape[0]
@@ -97,23 +98,12 @@ class GenomeTensor(object):
     def getTensor(self) -> np.ndarray:
         return self.tensor
 
-    def sameEncoding(self,
-                     kmer_size: int,
-                     fragment_size: int,
-                     n: int,
-                     hasher: Hasher) -> bool:
-        return kmer_size == self.kmer_size and \
-               fragment_size == self.fragment_size and \
-               n == self.n and \
-               hasher == self.hasher
-
-
 # Global variables
-A_vec: np.ndarray = np.array([1, 0, 0, 0])
-C_vec: np.ndarray = np.array([0, 1, 0, 0])
-G_vec: np.ndarray = np.array([0, 0, 1, 0])
-T_vec: np.ndarray = np.array([0, 0, 0, 1])
-N_vec: np.ndarray = np.array([0, 0, 0, 0])
+A_vec: np.ndarray = np.array([1, 0, 0, 0], dtype=np.int8)
+C_vec: np.ndarray = np.array([0, 1, 0, 0], dtype=np.int8)
+G_vec: np.ndarray = np.array([0, 0, 1, 0], dtype=np.int8)
+T_vec: np.ndarray = np.array([0, 0, 0, 1], dtype=np.int8)
+N_vec: np.ndarray = np.array([0, 0, 0, 0], dtype=np.int8)
 
 
 class Genome(object):
@@ -130,45 +120,37 @@ class Genome(object):
                  data_collector = None):
         # Initializing DataCollector
         if data_collector is None:
-            self.data_collector: DataCollector = DataCollector("../accessions.tsv")
+            self.data_collector: DataCollectorv2 = DataCollectorv2()
         else:
             self.data_collector = data_collector
 
-        # Checks if the accession exists, if not, raises an appropriate error.
-        if not self.data_collector.existsLocally(accession_id):
-           raise AccessionNotFoundLocally()
-
         self.accession_id: str = accession_id
         self.seq_filepath: str = self.data_collector.getAccPath(accession_id)
-        self.vec_filepath: str = ""
-        self.vec: np.ndarray = None
-        self.tensor: GenomeTensor = None
+        assert self.seq_filepath != "",\
+            "Accession {} was not found locally.".format(accession_id)
 
-    def getSeq(self):
+    def getSeq(self) -> Sequence:
         # Open file in "read only" mode
         file = open(self.seq_filepath, "r")
 
         # Read lines from fasta file containing sequence
         seq = ""
         first_line: bool = True
+        # Iterate on the lines
         for line in file:
+            # Ignore first line (only holds metadata)
             if first_line is True:
                 first_line = False
             else:
+                # Add the bases of the line to the sequence except of the last character which is always a ' '.
                 seq += line[:-1]
 
+        # Close the file
         file.close()
-        if len(seq) == 0:
+        # Sequence can not contain 0 bases
+        assert len(seq) > 0,\
             "The length of the accession {} sequence is zero".format(self.accession_id)
-            raise ValueError
         return seq
-
-    def getVectorizedSeq(self):
-        """
-        Returns the vectorized version
-        """
-        self.__vectorizeSeq()
-        return self.vec
 
     def __encodeBase(self,
                      base: str):
@@ -183,61 +165,13 @@ class Genome(object):
         else:
             return N_vec
 
-    def __vectorizeSeq(self, renew=False):
-        """
-        if the vec is not None, then it is already vectorized, no need to do nothing
-        If it is None, then one of the two options can occur:
-            1. The vectorized file has not been loaded yet.
-            2. A vectorized file representation of the file does not exist yet.
-        If it is option 1, then it will load the vector from the file
-        If it is option 2, then it will create the vector, serialize it, and wills save it into the appropriate file.
-
-        In all cases, it is guaranteed,
-        that the vectorized sequence will be found in the self.vec member after the call.
-        """
-
-        # Check if already sequenced
-        if self.vec is not None:
-            return
-
-        # create path if does not exist
-        vec_files_loc = "../data/vectorized/"
-        Path(vec_files_loc).mkdir(parents=True,
-                                  exist_ok=True)
-
-        # Check if serialized file already exists
-        self.vec_filepath = vec_files_loc + self.accession_id + ".bin"
-        if renew == True:
-            remove(self.vec_filepath)
-            self.__vectorizeSeq()
-        if path.exists(self.vec_filepath):
-            vec_file = open(self.vec_filepath, 'rb')
-
-            # Desirialize
-            serialized_nda = numproto.NDArray()
-            serialized_nda.ParseFromString(vec_file.read())
-            try:
-                self.vec = proto_to_ndarray(serialized_nda)
-            except ValueError:
-                # Close and remove faulty file
-                vec_file.close()
-                remove(self.vec_filepath)
-                self.__vectorizeSeq()
-                return
-            vec_file.close()
-            return
-
-        # if not, vectorize
+    def __vectorizeSeq(self):
+        # Vectorize the sequence O(sequence_length)
         seq = self.getSeq()
-        self.vec = np.zeros(shape=(len(seq), base_count))
+        vec = np.zeros(shape=(len(seq), base_count))
         for i in range(len(seq)):
-            self.vec[i, :] = self.__encodeBase(seq[i])
-
-        # And serialize
-        vec_file = open("../data/vectorized/" + self.accession_id + ".bin", "wb")
-        vec_file.write(ndarray_to_proto(self.vec).SerializeToString())
-        vec_file.close()
-
+            vec[i, :] = self.__encodeBase(seq[i])
+        return vec
 
     def getFeatureTensor(self,
                          kmer_size: int,
@@ -245,30 +179,12 @@ class Genome(object):
                          n: int,
                          hasher: Hasher = hashlib_hasher) -> np.ndarray:
         """
-        returns a created Genome tensor
+        Creates a Genome tensor class and returns the tensor created by the class
         """
-        # Check if exists
-        if self.tensor is not None:
-            # Check if the parameters for creating the tensor are the same, those are hyperparameters of the model
-            if self.tensor.sameEncoding(kmer_size=kmer_size,
-                                        fragment_size=fragment_size,
-                                        n=n,
-                                        hasher=hasher):
-                return self.tensor.getTensor()
-
-        # If does not exist, or the hyperparameters hava changed. Create it.
-        self.__vectorizeSeq()
-        try:
-            self.tensor = GenomeTensor(genome_vec=self.vec,
-                                       kmer_size=kmer_size,
-                                       fragment_size=fragment_size,
-                                       n=n,
-                                       hasher=hasher)
-        except ValueError:
-            self.__vectorizeSeq(renew=True)
-            self.tensor = GenomeTensor(genome_vec=self.vec,
-                                       kmer_size=kmer_size,
-                                       fragment_size=fragment_size,
-                                       n=n,
-                                       hasher=hasher)
-        return self.tensor.getTensor()
+        vec = self.__vectorizeSeq()
+        genome_tensor = GenomeTensor(genome_vec=vec,
+                                     kmer_size=kmer_size,
+                                     fragment_size=fragment_size,
+                                     n=n,
+                                     hasher=hasher)
+        return genome_tensor.getTensor()

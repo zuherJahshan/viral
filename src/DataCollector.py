@@ -52,31 +52,20 @@ class FastaSeqGetter(object):
             another existing sequences may be damaged and not downloaded.
             ***
         Returns:
-            TODO: The list of all successful accessions downloaded.
+            The list of all successful accessions downloaded.
 
         """
         # Save old accessions pattern
         old_accessions = self.accessions
 
-        # Put in a set all fasta files that exists
-        fasta_files_list = listdir(self.seq_files_location)
-        fasta_files_set = set()
-        for fasta_file in fasta_files_list:
-            fasta_files_set.add(fasta_file.split(".")[0])
-
-        # Add new accessions, check if already exists, if so please remove them
-        accessions_to_download: int = 0
-        for i in range(len(acc_list)):
-            if acc_list[i] not in fasta_files_set:
-                self.accessions += acc_list[i]
-                accessions_to_download += 1
-                if i < len(acc_list) - 1:
-                    self.accessions += ","
-            else:
-                print("accession {} already exists".format(acc_list[i]))
-
-        if accessions_to_download == 0:
-            return
+        # Fill accessions to download
+        acc_list_size = len(acc_list)
+        cnt = 0
+        for acc in acc_list:
+            self.accessions += acc
+            if cnt < len(acc_list) - 1:
+                self.accessions += ","
+            cnt += 1
 
         # execute command
         bash_command = " "
@@ -96,14 +85,11 @@ class FastaSeqGetter(object):
         # Retrieve old accessions
         self.accessions = old_accessions
 
-        # Get created file path
+        # Get created file path, Order the sequences in the appropriate files and remove the tmp file
         files = listdir(self.downloaded_files_path)
-
-        # Order the sequences in the appropriate files
-        self.__orderSeqFiles(self.downloaded_files_path + files[0])
-
-        # Remove the created file
+        downloaded_seqs = self.__orderSeqFiles(self.downloaded_files_path + files[0])
         remove(self.downloaded_files_path + files[0])
+        return downloaded_seqs
 
     def __newSeqLine(self,
                      line: str):
@@ -138,6 +124,7 @@ class FastaSeqGetter(object):
         seq_descriptor: str = ""
         seq: str = ""
 
+        downloaded_accs = []
         # Open file in "read only" mode
         seqs_file = open(file_path, "r")
 
@@ -152,11 +139,12 @@ class FastaSeqGetter(object):
                     self.__createFastaFile(self.__getAccId(seq_descriptor),
                                            seq_descriptor,
                                            seq)
+                    downloaded_accs.append(self.__getAccId(seq_descriptor))
                 seq_descriptor = line
                 seq = ""
             elif first_seq:
                 seqs_file.close()
-                return
+                return []
             else:
                 seq += line
         if len(seq) > 0:
@@ -166,6 +154,7 @@ class FastaSeqGetter(object):
 
         # Close sequences files
         seqs_file.close()
+        return downloaded_accs
 
 
 
@@ -217,7 +206,7 @@ class DataCollector(object):
                'coverage': float,
                'phylogeny': str}
         # Create data/raw directory if needed
-        raw_data_path = "../data/raw"
+        raw_data_path = "../data/raw/"
         if not os.path.isdir(raw_data_path):
             Path(raw_data_path).mkdir(parents=True,
                                       exist_ok=True)
@@ -334,10 +323,7 @@ class DataCollector(object):
         self._updateLocalLineageFile(lineage)
         folds_in_amount: int = ceil(amount / fold)
         for i in range(folds_in_amount):
-            if i < folds_in_amount - 1:
                 self._downloadSeqsByAcc(accessions[i*fold: (i+1)*fold])
-            else:
-                self._downloadSeqsByAcc(accessions[i*fold: amount])
 
     def getLocalLineages(self):
         if os.path.exists(self.existing_lineages_filepath):
@@ -365,3 +351,216 @@ class DataCollector(object):
             return ""
         else:
             return self.seq_getter.getSeqFilesLoc() + acc_id + ".fasta"
+
+LineageAccessionsMap = Dict[Lineage, Set[Accession]]
+AccessionLineageMap = Dict[Accession, Lineage]
+
+
+
+
+
+
+
+
+class DataCollectorv2(object):
+    """
+    The data collector is a class that is in charge of downloading sequences from the web to the local computer.
+    Also, returns statistics and answers queries about the data, both locally and remotely.
+    """
+    def __init__(self):
+        """
+        Builds a dictionary of [lineage -> accessions set]. This dictionary represents all available accessions that
+        are found remotely.
+
+        Also, builds/restores Another [lineage -> accessions set] dictionary. The later dict represents all available
+        accessions that are found locally.
+        """
+        self.data_path = "../data/"
+        self.raw_data_path = "../data/raw/"
+
+        print("Building Data frame")
+        self._configureAccessionsFile()
+        self._buildDF()
+        print("Done building Data frame")
+
+        # Initializing the sequence getter
+        self.seq_getter = FastaSeqGetter()
+
+        # Builds the [lin -> accs], [acc -> lin] remote data dicts.
+        print("Building remote dicts")
+        self._buildRemoteDicts()
+        print("Done building remote dicts")
+
+        # Builds local lin -> accs dict
+        print("Building local dicts")
+        self._buildLocalDicts()
+        print("Done building local dicts")
+
+    def downloadLineages(self,
+                         accs_thresh: int,
+                         max_accs: int) -> None:
+        """
+        Will download to the computer a maximum of "max_accs" accessions
+        of all lineages that has more than "thresh" accessions.
+
+        In case a lineage is already found locally then the functionality is as follows:
+            1. if he already has max_accs or more locally, then will be ignored.
+            2. if he has less than max_accs locally, then accessions will be downloaded till reaches a maximum of max_accs.
+        """
+        # Iterate over all remote lineages.
+        for lin in self.remote_lin_accs_dict:
+            # If has less accessions than the threshold, just ignore it
+            accs = self.remote_lin_accs_dict[lin]
+            if len(accs) < accs_thresh:
+                continue
+            # If already downloaded and has more than the max accs, also ignore it.
+            elif lin in self.local_lin_accs_dict:
+                if len(self.local_lin_accs_dict[lin]) >= max_accs:
+                    continue
+            else:
+                # Get accessions to download
+                accs_to_download = list(accs - self.getLocalAccessions(lin))
+                num_of_accs_to_download = min(max_accs - len(self.getLocalAccessions(lin)),
+                                              len(accs_to_download) - len(self.getLocalAccessions(lin)))
+
+                # The download will occur in folds of 128 each time
+                fold = 128
+                folds_to_download = ceil(num_of_accs_to_download / fold)
+                successful_downloaded_accs = []
+                for i in range(folds_to_download):
+                    if i < folds_to_download - 1:
+                        successful_downloaded_accs += self.seq_getter.getSeqs(accs_to_download[i*fold: (i+1)*fold])
+                    else:
+                        successful_downloaded_accs += self.seq_getter.getSeqs(accs_to_download[i*fold: num_of_accs_to_download])
+
+                # Update local dict.
+                if lin in self.local_lin_accs_dict:
+                    self.local_lin_accs_dict[lin].update(set(successful_downloaded_accs))
+                else:
+                    self.local_lin_accs_dict.update({lin: set(successful_downloaded_accs)})
+
+    def getLocalAccessions(self, lineage) -> Set[Accession]:
+        if lineage in self.local_lin_accs_dict:
+            return self.local_lin_accs_dict[lineage]
+        return set()
+
+    def getLocalLineages(self,
+                         accs_thresh: int) -> List[Lineage]:
+        lins = []
+        for lin in self.local_lin_accs_dict:
+            if len(self.local_lin_accs_dict[lin]) >= accs_thresh:
+                lins.append(lin)
+        return lins
+
+    def getAccPath(self,
+                   accession: Accession) -> str:
+        """
+        Returns the file path of the accession, if accession does not exist return an empty string
+        """
+
+        # Check if exists
+        if accession in self.local_acc_lin_dict:
+            return self.raw_data_path + accession + ".fasta"
+        else:
+            return ""
+
+    def saveRemoteDicts(self):
+        remote_lin_accs_filepath = self.data_path + "remote_lin_accs.pkl"
+        remote_acc_lin_filepath = self.data_path + "remote_acc_lin.pkl"
+        if os.path.exists(remote_lin_accs_filepath):
+            return
+        with open(remote_lin_accs_filepath, 'wb') as f:
+            pickle.dump(self.remote_lin_accs_dict,
+                        f,
+                        pickle.HIGHEST_PROTOCOL)
+        with open(remote_acc_lin_filepath, 'wb') as f:
+            pickle.dump(self.remote_acc_lin_dict,
+                        f,
+                        pickle.HIGHEST_PROTOCOL)
+
+    # Returns True if successfull, False if files does not exist
+    def loadRemoteDicts(self) -> bool:
+        remote_lin_accs_filepath = self.data_path + "remote_lin_accs.pkl"
+        remote_acc_lin_filepath = self.data_path + "remote_acc_lin.pkl"
+        if os.path.exists(remote_lin_accs_filepath):
+            with open(remote_lin_accs_filepath, 'rb') as f:
+                self.remote_lin_accs_dict = pickle.load(f)
+            with open(remote_acc_lin_filepath, 'rb') as f:
+                self.remote_acc_lin_dict = pickle.load(f)
+            return True
+        return False
+
+
+    #######################################
+    #######Private member functions########
+    #######################################
+    def _buildLocalDicts(self):
+        # Initialize an empty dict
+        self.local_lin_accs_dict: LineageAccessionsMap = {}
+        self.local_acc_lin_dict: AccessionLineageMap = {}
+
+        # List accessions in data directory
+        accessions = os.listdir(self.raw_data_path)
+        for acc_file in accessions:
+            acc = acc_file.split(".")[0]
+            lin = self.remote_acc_lin_dict[acc]
+            if lin in self.local_lin_accs_dict:     # if exists, just add to the already existing accessions set
+                self.local_lin_accs_dict[lin].add(acc)
+            else:   # The lin does not exist in the dict
+                self.local_lin_accs_dict.update({lin: set([acc])})
+            self.local_acc_lin_dict.update({acc: lin})
+
+    def _buildRemoteDicts(self):
+        # Check if they exist locally, if yes just load them...
+        self.remote_lin_accs_dict: LineageAccessionsMap = {}
+        self.remote_acc_lin_dict: AccessionLineageMap = {}
+        if self.loadRemoteDicts():
+            return
+        for index, row in self.df.iterrows():
+            lin = row['lineage']
+            accs = self._getAccsFromDFRow(row['acc'])
+            if lin in self.remote_lin_accs_dict:    # if exists, just add to the already existing accessions set
+                for acc in accs:
+                    self.remote_lin_accs_dict[lin].add(acc)
+            else:   # The lin does not exist in the dict
+                self.remote_lin_accs_dict.update({lin: set(accs)})
+            for acc in accs:
+                self.remote_acc_lin_dict.update({acc: lin})
+        self.saveRemoteDicts()
+
+
+    def _getAccsFromDFRow(self,
+                          accs: str):
+        return accs.split(" ")
+
+    def _buildDF(self):
+        dtype={'acc': str,
+               'lineage': str,
+               'cross_references': str,
+               'collection_date': str,
+               'country': str,
+               'center_name': str,
+               'host': str,
+               'TAXON': str,
+               'coverage': float,
+               'phylogeny': str}
+        # Create data/raw directory if needed
+        if not os.path.isdir(self.raw_data_path):
+            Path(self.raw_data_path).mkdir(parents=True,
+                                           exist_ok=True)
+
+        self.df = pd.read_csv(self.accessions_file,
+                              delimiter='\t',
+                              dtype=dtype)
+        self.df.dropna(subset=["lineage"], inplace=True)
+
+    def _configureAccessionsFile(self):
+        self.accessions_file = "../accessions.tsv"
+        c_all_accessions_filename = self.accessions_file + ".gz"
+        if not path.isfile(self.accessions_file):
+            "The zipped file must exist"
+            assert path.isfile(c_all_accessions_filename),\
+                "Fatal error, accessions file is missing!"
+
+            # unzip the file
+            system("gzip -dk " + c_all_accessions_filename)
