@@ -103,7 +103,8 @@ class Dataset(object):
             map_func=lambda filepath: tf.data.TFRecordDataset(filepath),
             num_parallel_calls=tf.data.AUTOTUNE).\
             map(map_func=lambda example_proto: self._deserializeGenomeTensor(example_proto),
-                num_parallel_calls=tf.data.AUTOTUNE).\
+                num_parallel_calls=tf.data.AUTOTUNE,
+                cycle_length=len(self.hps.lineages)).\
             repeat(epochs).\
             shuffle(shuffle_buffer_size).\
             batch(batch_size).\
@@ -117,8 +118,7 @@ class Dataset(object):
         filepath_dataset = tf.data.Dataset.list_files(self._getValidPath() + "*")
         return filepath_dataset.interleave(
             map_func=lambda filepath: tf.data.TFRecordDataset(filepath),
-            num_parallel_calls=tf.data.AUTOTUNE,
-            cycle_length=len(self.hps.lineages)).\
+            num_parallel_calls=tf.data.AUTOTUNE).\
             map(map_func=lambda example_proto: self._deserializeGenomeTensor(example_proto),
                  num_parallel_calls=tf.data.AUTOTUNE).\
             batch(batch_size).\
