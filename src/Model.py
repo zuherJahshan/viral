@@ -273,6 +273,26 @@ class CoViTModel(tf.keras.Model):
         self.norm = tf.keras.layers.LayerNormalization()
         self.out = PredictorBlock(units=d_out)
 
+    def deepen(self,
+               trainable: bool = False):
+        hps = self.encoder_blocks[0].getHP()
+        self.encoder_blocks[-1] = EncoderBlock(d_model=hps["d_model"],
+                                               d_val=hps["d_val"],
+                                               d_key=hps["d_key"],
+                                               d_ff=hps["d_ff"],
+                                               heads=hps["heads"],
+                                               dropout_rate=hps["dropout_rate"])
+        self.encoder_blocks.append(EncoderBlock(d_model=hps["d_model"],
+                                                d_val=hps["d_val"],
+                                                d_key=hps["d_key"],
+                                                d_ff=hps["d_ff"],
+                                                heads=hps["heads"],
+                                                dropout_rate=hps["dropout_rate"]))
+        self.norm = tf.keras.layers.LayerNormalization()
+        self.out = PredictorBlock(units=self.out.getHP()["units"])
+        for layer in self.layers[: -4]:
+            layer.trainable = trainable
+
     def call(self, X):
         Z = self.base_embedding(X)   # X of size [batch, n, d_model, 4] -> transforms to [batch, n, d_model]
         Z = tf.squeeze(Z,

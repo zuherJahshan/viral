@@ -64,17 +64,26 @@ class NNModel(object):
                                  d_ff=self.hps.d_ff,
                                  heads=self.hps.heads,
                                  dropout_rate=self.hps.dropout_rate)
-            metrics = [tf.keras.metrics.TopKCategoricalAccuracy(k=1,
-                                                                name='top1_accuracy'),
-                       tf.keras.metrics.TopKCategoricalAccuracy(k=2,
-                                                                name='top2_accuracy'),
-                       tf.keras.metrics.TopKCategoricalAccuracy(k=5,
-                                                                name='top5_accuracy')
-                       ]
-            self.nn.compile(loss="categorical_crossentropy",
-                                  optimizer=tf.keras.optimizers.Adam(clipnorm=1.0),
-                                  metrics=metrics)  # the optimizer will change after debugging
+            self._compileNN()
 
+
+    def _compileNN(self):
+        metrics = [tf.keras.metrics.TopKCategoricalAccuracy(k=1,
+                                                            name='top1_accuracy'),
+                   tf.keras.metrics.TopKCategoricalAccuracy(k=2,
+                                                            name='top2_accuracy'),
+                   tf.keras.metrics.TopKCategoricalAccuracy(k=5,
+                                                            name='top5_accuracy')
+                   ]
+        self.nn.compile(loss="categorical_crossentropy",
+                            optimizer=tf.keras.optimizers.Adam(clipnorm=1.0),
+                            metrics=metrics)  # the optimizer will change after debugging
+
+    def deepenNN(self,
+                 trainable: bool = False):
+        self.hps.encoder_repeats += 1
+        self.nn.deepen(trainable=trainable)
+        self._compileNN()
 
     def train(self,
               trainset: tf.data.Dataset,
@@ -85,7 +94,6 @@ class NNModel(object):
         history = self.nn.fit(x=trainset,
                               epochs=epochs,
                               steps_per_epoch=math.floor(trainset_size / batch_size))
-        self.save()
         return history
 
 
