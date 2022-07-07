@@ -145,13 +145,16 @@ class Dataset(object):
         accessions_set = self.data_collector.getLocalAccessions(lineage=lineage)
 
         # Convert it into a list
-        accessions = random.shuffle(list(accessions_set))
+        accessions = list(accessions_set)
+        random.shuffle(accessions)
         print(accessions)
 
         # split the accessions list to train_accs, valid_accs
         train_index_split = int((1 - self.hps.validation_split)*len(accessions))
-        train_accs = random.shuffle(accessions[:train_index_split])
-        valid_accs = random.shuffle(accessions[train_index_split:])
+        train_accs = accessions[:train_index_split]
+        random.shuffle(train_accs)
+        valid_accs = accessions[train_index_split:]
+        random.shuffle(valid_accs)
 
         # Create the project path if does not yet exist
         os.makedirs(self._getTrainPath(), exist_ok=True)
