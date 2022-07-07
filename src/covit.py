@@ -65,13 +65,14 @@ class CovitProject(object):
                                                  epochs=epochs,
                                                  batch_size=batch_size)
 
+    def evaluate(self,
+                 name: str,
+                 batch_size: int):
+        return self.name_nnmodel_map[name].evaluate(validset=self.dataset.getValidSet(batch_size=batch_size))
+
 
     def listNNModels(self) -> List[str]:
         if os.path.exists(self.nnmodels_path):
             return os.listdir(self.nnmodels_path)
         else:
             return []
-
-    def evaluate(self,
-                 batch_size: int):
-        pass

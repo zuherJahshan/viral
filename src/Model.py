@@ -273,6 +273,10 @@ class CoViTModel(tf.keras.Model):
         self.norm = tf.keras.layers.LayerNormalization()
         self.out = PredictorBlock(units=d_out)
 
+    def changePredictorHead(self,
+                            classes):
+        self.out = PredictorBlock(units=classes)
+
     def deepen(self,
                trainable: bool = False):
         hps = self.encoder_blocks[0].getHP()

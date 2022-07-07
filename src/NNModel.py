@@ -85,6 +85,12 @@ class NNModel(object):
         self.nn.deepen(trainable=trainable)
         self._compileNN()
 
+    def changePredictorHead(self,
+                            classes):
+        self.hps.classes = classes
+        self.nn.changePredictorHead(classes)
+        self._compileNN()
+
     def train(self,
               trainset: tf.data.Dataset,
               trainset_size: int,
@@ -98,8 +104,8 @@ class NNModel(object):
 
 
     def evaluate(self,
-                 dataset: tf.data.Dataset):
-        pass
+                 validset: tf.data.Dataset):
+        return self.nn.evaluate(x=validset)
 
     def save(self):
         # Make sure the path exists
