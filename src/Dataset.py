@@ -1,5 +1,6 @@
 import os
 import pickle
+import random
 
 from Types import *
 from DataCollector import DataCollectorv2
@@ -144,13 +145,13 @@ class Dataset(object):
         accessions_set = self.data_collector.getLocalAccessions(lineage=lineage)
 
         # Convert it into a list
-        accessions = list(accessions_set)
+        accessions = random.shuffle(list(accessions_set))
         print(accessions)
 
         # split the accessions list to train_accs, valid_accs
         train_index_split = int((1 - self.hps.validation_split)*len(accessions))
-        train_accs = accessions[:train_index_split]
-        valid_accs = accessions[train_index_split:]
+        train_accs = random.shuffle(accessions[:train_index_split])
+        valid_accs = random.shuffle(accessions[train_index_split:])
 
         # Create the project path if does not yet exist
         os.makedirs(self._getTrainPath(), exist_ok=True)
