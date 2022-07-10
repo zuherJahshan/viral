@@ -215,20 +215,20 @@ class DataCollectorv2(object):
             elif lin in self.local_lin_accs_dict:
                 if len(self.local_lin_accs_dict[lin]) >= max_accs:
                     continue
-            else:
-                # Get accessions to download
-                accs_to_download = list(accs - self.getLocalAccessions(lin))
-                num_of_accs_to_download = min(max_accs - len(self.getLocalAccessions(lin)),
-                                              len(accs_to_download) - len(self.getLocalAccessions(lin)))
+                else:
+                    # Get accessions to download
+                    accs_to_download = list(accs - self.getLocalAccessions(lin))
+                    num_of_accs_to_download = min(max_accs - len(self.getLocalAccessions(lin)),
+                                                  len(accs_to_download) - len(self.getLocalAccessions(lin)))
 
-                # The download will occur in folds of 128 each time
-                fold = 128
-                folds_to_download = ceil(num_of_accs_to_download / fold)
-                for i in range(folds_to_download):
-                    if i < folds_to_download - 1:
-                        self.seq_getter.getSeqs(accs_to_download[i*fold: (i+1)*fold])
-                    else:
-                        self.seq_getter.getSeqs(accs_to_download[i*fold: num_of_accs_to_download])
+                    # The download will occur in folds of 128 each time
+                    fold = 128
+                    folds_to_download = ceil(num_of_accs_to_download / fold)
+                    for i in range(folds_to_download):
+                        if i < folds_to_download - 1:
+                            self.seq_getter.getSeqs(accs_to_download[i*fold: (i+1)*fold])
+                        else:
+                            self.seq_getter.getSeqs(accs_to_download[i*fold: num_of_accs_to_download])
         self._buildLocalDicts()
 
     def getLocalAccessions(self, lineage) -> Set[Accession]:

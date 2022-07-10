@@ -122,8 +122,8 @@ class NNModel(object):
                                                             name='top5_accuracy')
                    ]
         self.nn.compile(loss="categorical_crossentropy",
-                            optimizer=tf.keras.optimizers.Adam(clipnorm=1.0),
-                            metrics=metrics)  # the optimizer will change after debugging
+                        optimizer=tf.keras.optimizers.Adam(clipnorm=1.0),
+                        metrics=metrics)  # the optimizer will change after debugging
 
     def deepenNN(self,
                  trainable: bool = False):

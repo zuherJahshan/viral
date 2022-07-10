@@ -42,6 +42,8 @@ class DatasetHPs(object):
                         outp,
                         pickle.HIGHEST_PROTOCOL)
 
+DatasetHPsV2 = DatasetHPs
+
 def loadDatasetHPs(dataset_path: str) -> DatasetHPs:
     file_name = dataset_path + "hyperparameters.pickle"
     with open(file_name, "rb") as inp:
