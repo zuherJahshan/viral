@@ -280,12 +280,6 @@ class CoViTModel(tf.keras.Model):
     def deepen(self,
                trainable: bool = False):
         hps = self.encoder_blocks[0].getHP()
-        self.encoder_blocks[-1] = EncoderBlock(d_model=hps["d_model"],
-                                               d_val=hps["d_val"],
-                                               d_key=hps["d_key"],
-                                               d_ff=hps["d_ff"],
-                                               heads=hps["heads"],
-                                               dropout_rate=hps["dropout_rate"])
         self.encoder_blocks.append(EncoderBlock(d_model=hps["d_model"],
                                                 d_val=hps["d_val"],
                                                 d_key=hps["d_key"],
@@ -347,4 +341,5 @@ custom_objects = {"Linear": Linear,
                   "PredictorBlock": PredictorBlock,
                   "FeedForward": FeedForward,
                   "EncoderBlock": EncoderBlock,
-                  "CoViTModel": CoViTModel}
+                  "CoViTModel": CoViTModel,
+                  "CoViTModel.deepen": CoViTModel.deepen}

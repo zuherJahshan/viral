@@ -1,7 +1,7 @@
 import os
 
 from NNModel import NNModelHPs, NNModel
-from Dataset import DatasetHPs, Dataset
+from Dataset import DatasetHPs, Dataset, base_count
 from DataCollector import DataCollectorv2
 from Types import *
 NameNNModelMap = Dict[str, NNModel]
@@ -31,12 +31,13 @@ class CovitProject(object):
 
     def addNNModel(self,
                    name: str,
-                   nnmodel_hps = NNModelHPs) -> bool:
+                   nnmodel_hps = NNModelHPs):
 
         # Check if exists
         if os.path.exists(self.nnmodels_path + name):
-            print("A Neural Network model named {} already exists.".format(name))
-            return False
+            print("A Neural Network model named {} already exists. loading it instead of creating".format(name))
+            self.loadNNModel(name)
+            return
 
         # If does not exist, create one...
         new_nnmodel = NNModel(name,
@@ -49,27 +50,41 @@ class CovitProject(object):
         if os.path.exists(self.nnmodels_path + name):
             if name in self.name_nnmodel_map:
                 return
+            input_shape = [1, self.dataset.hps.n, self.dataset.hps.frag_len, base_count]
             nnmodel = NNModel(name,
-                              nnmodels_path=self.nnmodels_path)
+                              nnmodels_path=self.nnmodels_path,
+                              input_shape=input_shape)
             self.name_nnmodel_map.update({name: nnmodel})
         else:
             print("Can not load the Neural Network model named {}, it does not exist.".format(name))
+
+    def getResults(self,
+                   name: str):
+        return self.name_nnmodel_map[name].getResults()
 
     def train(self,
               name: str,
               epochs: int,
               batch_size: int):
-        return self.name_nnmodel_map[name].train(trainset=self.dataset.getTrainSet(batch_size=batch_size,
-                                                                                   epochs=epochs),
-                                                 trainset_size=self.dataset.getTrainSetSampleCount(),
-                                                 epochs=epochs,
-                                                 batch_size=batch_size)
+        self.name_nnmodel_map[name].train(trainset=self.dataset.getTrainSet(batch_size=batch_size,
+                                                                            epochs=epochs),
+                                          trainset_size=self.dataset.getTrainSetSampleCount(),
+                                          epochs=epochs,
+                                          batch_size=batch_size)
+        self.name_nnmodel_map[name].save()
 
     def evaluate(self,
                  name: str,
                  batch_size: int):
         return self.name_nnmodel_map[name].evaluate(validset=self.dataset.getValidSet(batch_size=batch_size))
 
+    def deepenNN(self,
+                 name, str,
+                 trainable: bool = False):
+        if name in self.name_nnmodel_map:
+            self.name_nnmodel_map[name].deepenNN(trainable=trainable)
+        else:
+            print("No Neural Network named {} exists in the system".format(name))
 
     def listNNModels(self) -> List[str]:
         if os.path.exists(self.nnmodels_path):

@@ -5,9 +5,9 @@ from os import listdir
 from os import remove
 from pathlib import Path
 from Types import *
-import numpy as np
 from math import ceil
 import pickle
+import matplotlib.pyplot as plt
 
 import pandas as pd
 from typing import List
@@ -255,6 +255,25 @@ class DataCollectorv2(object):
             return self.raw_data_path + accession + ".fasta"
         else:
             return ""
+
+    def getCountHist(self):
+        # Create a counts sequence for each lineage
+        count_seq = []
+        for lin in self.remote_lin_accs_dict:
+            accs_cnt = min(len(self.remote_lin_accs_dict[lin]), 4000)
+            count_seq.append(accs_cnt)
+
+        pd_series = pd.Series(count_seq)
+        pd_series.plot.hist(grid=True,
+                            bins=80,
+                            rwidth=0.9,
+                            color='#607c8e')
+        plt.title("Lineage accessions count")
+        plt.xlabel('Accessions count')
+        plt.ylabel('Lineages count')
+        plt.grid(axis='y',
+                 alpha=0.75)
+        plt.savefig("hist.png")
 
     #######################################
     #######Private member functions########

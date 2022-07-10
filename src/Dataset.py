@@ -6,7 +6,6 @@ from Types import *
 from DataCollector import DataCollectorv2
 from Genome import Genome, base_count
 
-
 class DatasetHPs(object):
     def __init__(self,
                  lineages: List[Lineage],
@@ -19,6 +18,42 @@ class DatasetHPs(object):
         #  in CoViT as an example
         self.lineages = lineages
         self.lineages.sort()
+        #self.max_accs_per_lineage = max_accs_per_lineage
+        self.frag_len = frag_len
+        self.kmer_size = kmer_size
+        self.n = n
+        self.validation_split = validation_split
+
+        self.valid_size = 0
+        self.train_size = 0
+
+    def updateSizes(self,
+                    train_size: int,
+                    valid_size: int):
+        self.train_size = train_size
+        self.valid_size = valid_size
+
+    def save(self, dataset_path):
+        file_name = dataset_path + "hyperparameters.pickle"
+        with open(file_name, 'wb') as outp:
+            pickle.dump(self,
+                        outp,
+                        pickle.HIGHEST_PROTOCOL)
+
+class DatasetHPsV2(object):
+    def __init__(self,
+                 lineages: List[Lineage],
+                 max_accs_per_lineage: int,
+                 frag_len: int,
+                 kmer_size: int,
+                 n: int,
+                 validation_split: float):
+
+        # TODO: Add sanity checks on the parameters of the Dataset params. To do so, please refer to the class of HPs
+        #  in CoViT as an example
+        self.lineages = lineages
+        self.lineages.sort()
+        self.max_accs_per_lineage = max_accs_per_lineage
         self.frag_len = frag_len
         self.kmer_size = kmer_size
         self.n = n
@@ -101,10 +136,10 @@ class Dataset(object):
         filepath_dataset = tf.data.Dataset.list_files(self._getTrainPath() + "*")
         return filepath_dataset.interleave(
             map_func=lambda filepath: tf.data.TFRecordDataset(filepath),
-            num_parallel_calls=tf.data.AUTOTUNE).\
+            num_parallel_calls=tf.data.AUTOTUNE,
+            cycle_length=len(self.hps.lineages)).\
             map(map_func=lambda example_proto: self._deserializeGenomeTensor(example_proto),
-                num_parallel_calls=tf.data.AUTOTUNE,
-                cycle_length=len(self.hps.lineages)).\
+                num_parallel_calls=tf.data.AUTOTUNE).\
             repeat(epochs).\
             shuffle(shuffle_buffer_size).\
             batch(batch_size).\
@@ -144,10 +179,10 @@ class Dataset(object):
         # Get local accessions set of the lineage
         accessions_set = self.data_collector.getLocalAccessions(lineage=lineage)
 
-        # Convert it into a list
+        # Convert it into a list, shuffle elements, and take maximum of max_accs_per_lineage.
         accessions = list(accessions_set)
         random.shuffle(accessions)
-        print(accessions)
+        accessions = accessions[:self.hps.max_accs_per_lineage]
 
         # split the accessions list to train_accs, valid_accs
         train_index_split = int((1 - self.hps.validation_split)*len(accessions))
