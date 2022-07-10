@@ -6,41 +6,8 @@ from Types import *
 from DataCollector import DataCollectorv2
 from Genome import Genome, base_count
 
+
 class DatasetHPs(object):
-    def __init__(self,
-                 lineages: List[Lineage],
-                 frag_len: int,
-                 kmer_size: int,
-                 n: int,
-                 validation_split: float):
-
-        # TODO: Add sanity checks on the parameters of the Dataset params. To do so, please refer to the class of HPs
-        #  in CoViT as an example
-        self.lineages = lineages
-        self.lineages.sort()
-        #self.max_accs_per_lineage = max_accs_per_lineage
-        self.frag_len = frag_len
-        self.kmer_size = kmer_size
-        self.n = n
-        self.validation_split = validation_split
-
-        self.valid_size = 0
-        self.train_size = 0
-
-    def updateSizes(self,
-                    train_size: int,
-                    valid_size: int):
-        self.train_size = train_size
-        self.valid_size = valid_size
-
-    def save(self, dataset_path):
-        file_name = dataset_path + "hyperparameters.pickle"
-        with open(file_name, 'wb') as outp:
-            pickle.dump(self,
-                        outp,
-                        pickle.HIGHEST_PROTOCOL)
-
-class DatasetHPsV2(object):
     def __init__(self,
                  lineages: List[Lineage],
                  max_accs_per_lineage: int,
