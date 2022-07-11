@@ -79,7 +79,7 @@ class CovitProject(object):
         return self.name_nnmodel_map[name].evaluate(validset=self.dataset.getValidSet(batch_size=batch_size))
 
     def deepenNN(self,
-                 name, str,
+                 name: str,
                  trainable: bool = False):
         if name in self.name_nnmodel_map:
             self.name_nnmodel_map[name].deepenNN(trainable=trainable)
