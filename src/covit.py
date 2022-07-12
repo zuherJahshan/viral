@@ -31,7 +31,10 @@ class CovitProject(object):
 
     def addNNModel(self,
                    name: str,
-                   nnmodel_hps = NNModelHPs):
+                   nnmodel_hps: NNModelHPs=None,
+                   other: str=None):
+        assert other != None or nnmodel_hps != None, \
+            "One of the arguments nnmodel_hps or other MUST be specified."
 
         # Check if exists
         if os.path.exists(self.nnmodels_path + name):
@@ -40,10 +43,23 @@ class CovitProject(object):
             return
 
         # If does not exist, create one...
-        new_nnmodel = NNModel(name,
-                              nnmodels_path=self.nnmodels_path,
-                              hps=nnmodel_hps)
-        self.name_nnmodel_map.update({name: new_nnmodel})
+        if other == None:
+            new_nnmodel = NNModel(name,
+                                  nnmodels_path=self.nnmodels_path,
+                                  hps=nnmodel_hps)
+            self.name_nnmodel_map.update({name: new_nnmodel})
+        else:
+            input_shape = [1, self.dataset.hps.n, self.dataset.hps.frag_len, base_count]
+            if not other in self.name_nnmodel_map:
+                print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
+                return
+
+            new_nnmodel = NNModel(name,
+                                  nnmodels_path=self.nnmodels_path,
+                                  hps=None,
+                                  other=self.name_nnmodel_map[other],
+                                  input_shape=input_shape)
+            self.name_nnmodel_map.update({name: new_nnmodel})
 
     def loadNNModel(self,
                     name: str):
@@ -66,11 +82,13 @@ class CovitProject(object):
               name: str,
               epochs: int,
               batch_size: int):
+        validset = self.dataset.getValidSet(batch_size)
         self.name_nnmodel_map[name].train(trainset=self.dataset.getTrainSet(batch_size=batch_size,
                                                                             epochs=epochs),
                                           trainset_size=self.dataset.getTrainSetSampleCount(),
                                           epochs=epochs,
-                                          batch_size=batch_size)
+                                          batch_size=batch_size,
+                                          validset=validset)
         self.name_nnmodel_map[name].save()
 
     def evaluate(self,
