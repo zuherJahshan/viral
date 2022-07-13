@@ -31,7 +31,7 @@ class Linear(tf.keras.layers.Layer):
             name="kernel",
             shape=[batch_input_shape[-1], self.units],
             initializer="glorot_normal",
-            regularizer=tf.keras.regularizers.L2(0.05)
+            regularizer=tf.keras.regularizers.L2(0.01)
         )
         self.bias = self.add_weight(
             name="bias",
@@ -273,24 +273,6 @@ class CoViTModel(tf.keras.Model):
                                             dropout_rate=dropout_rate) for _ in range(self.N)]
         self.norm = tf.keras.layers.LayerNormalization()
         self.out = PredictorBlock(units=d_out)
-
-    def changePredictorHead(self,
-                            classes):
-        self.out = PredictorBlock(units=classes)
-
-    def deepen(self,
-               trainable: bool = False):
-        hps = self.encoder_blocks[0].getHP()
-        self.encoder_blocks.append(EncoderBlock(d_model=hps["d_model"],
-                                                d_val=hps["d_val"],
-                                                d_key=hps["d_key"],
-                                                d_ff=hps["d_ff"],
-                                                heads=hps["heads"],
-                                                dropout_rate=hps["dropout_rate"]))
-        self.norm = tf.keras.layers.LayerNormalization()
-        self.out = PredictorBlock(units=self.out.getHP()["units"])
-        for layer in self.layers[: -4]:
-            layer.trainable = trainable
 
     def call(self, X):
         Z = self.base_embedding(X)   # X of size [batch, n, d_model, 4] -> transforms to [batch, n, d_model]

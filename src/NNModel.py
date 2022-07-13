@@ -3,6 +3,7 @@ import os
 import shutil
 import pickle
 from timeit import default_timer as timer
+from Genome import base_count
 
 import tensorflow as tf
 
@@ -95,26 +96,22 @@ class NNModel(object):
     def __init__(self,
                  name: str,
                  nnmodels_path: str,
-                 input_shape=None,
                  hps: NNModelHPs=None,
                  other=None):
-        assert hps != None or input_shape != None or other != None, \
-            "if loading an existing model input_shape must be specified. If creating a new one hps must be specified!"
         self.nnmodel_path = nnmodels_path + name + "/"
 
         # Check if model exists
         if os.path.exists(self.nnmodel_path):
-            if self.load(input_shape=input_shape):
+            if self.load():
                 return
 
+        assert hps != None != None or other != None, \
+            "If creating a new mudel hps or other must be specified!"
         # Check if it is a model to copy
         if other != None:
-            assert input_shape != None, \
-                "To build a new neural network based on other neural network, input shape must be specified"
             self.hps = other.hps
             self.results = NNModelResults()
-            self.nn = self._copyNN(old_nn=other.nn,
-                                   input_shape=input_shape)
+            self.nn = self._copyNN(old_nn=other.nn)
             return
 
 
@@ -156,8 +153,8 @@ class NNModel(object):
     def deepenNN(self,
                  trainable: bool = False):
         self.hps.encoder_repeats += 1
-        self.nn.deepen(trainable=trainable)
-        self._compileNN()
+        self.nn = self._copyNN(old_nn=self.nn,
+                               encoder_repeats=self.hps.encoder_repeats)
 
     def changePredictorHead(self,
                             classes):
@@ -217,8 +214,7 @@ class NNModel(object):
         return self.nnmodel_path + "nn/"
 
 
-    def load(self,
-             input_shape):
+    def load(self):
         # Load the HPs
         self.hps: NNModelHPs = loadNNModelHPs(nnmodel_path=self.nnmodel_path)
         if self.hps == None:
@@ -237,24 +233,28 @@ class NNModel(object):
 
         # copy old version to the new one to retrieve CoViTModel unsaved functionalities.
         self.nn = self._copyNN(tf.keras.models.load_model(nn_path,
-                                                          custom_objects=custom_objects),
-                               input_shape=input_shape)
+                                                          custom_objects=custom_objects))
 
         return True
 
 
     def _copyNN(self,
                 old_nn,
-                input_shape):
+                encoder_repeats: int = None):
         # Create a new neural network
-        new_nn = CoViTModel(N=self.hps.encoder_repeats,
-                            d_out=self.hps.classes,
-                            d_model=self.hps.d_model,
-                            d_val=self.hps.d_val,
-                            d_key=self.hps.d_key,
-                            d_ff=self.hps.d_ff,
-                            heads=self.hps.heads,
-                            dropout_rate=self.hps.dropout_rate)
+        if encoder_repeats == None:
+            encoder_repeats = self.hps.encoder_repeats
+
+        input_shape = (1, 1, self.hps.d_model, base_count)
+
+        new_nn = CoViTModel(N=encoder_repeats,
+                            d_out=old_nn.get_config()["d_out"],
+                            d_model=old_nn.get_config()["d_model"],
+                            d_val=old_nn.get_config()["d_val"],
+                            d_key=old_nn.get_config()["d_key"],
+                            d_ff=old_nn.get_config()["d_ff"],
+                            heads=old_nn.get_config()["heads"],
+                            dropout_rate=old_nn.get_config()["dropout_rate"])
 
         # compile
         self._compileNN(new_nn)
@@ -263,8 +263,11 @@ class NNModel(object):
         dummy = tf.random.uniform(input_shape)
         new_nn(dummy)
 
+        # Layers to copy from the old NN is the base embedding layer, and all of the encoders that can be copied
+        layers_to_copy = 1 + min(encoder_repeats, old_nn.get_config()["N"])
+
         # copy weights from previous NN
-        for i in range(len(new_nn.layers)):
+        for i in range(layers_to_copy):
             new_nn.layers[i].set_weights(old_nn.layers[i].get_weights())
 
         return new_nn

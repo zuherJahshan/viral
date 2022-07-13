@@ -49,7 +49,6 @@ class CovitProject(object):
                                   hps=nnmodel_hps)
             self.name_nnmodel_map.update({name: new_nnmodel})
         else:
-            input_shape = [1, self.dataset.hps.n, self.dataset.hps.frag_len, base_count]
             if not other in self.name_nnmodel_map:
                 print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
                 return
@@ -57,8 +56,7 @@ class CovitProject(object):
             new_nnmodel = NNModel(name,
                                   nnmodels_path=self.nnmodels_path,
                                   hps=None,
-                                  other=self.name_nnmodel_map[other],
-                                  input_shape=input_shape)
+                                  other=self.name_nnmodel_map[other])
             self.name_nnmodel_map.update({name: new_nnmodel})
 
     def loadNNModel(self,
@@ -66,10 +64,8 @@ class CovitProject(object):
         if os.path.exists(self.nnmodels_path + name):
             if name in self.name_nnmodel_map:
                 return
-            input_shape = [1, self.dataset.hps.n, self.dataset.hps.frag_len, base_count]
             nnmodel = NNModel(name,
-                              nnmodels_path=self.nnmodels_path,
-                              input_shape=input_shape)
+                              nnmodels_path=self.nnmodels_path)
             self.name_nnmodel_map.update({name: nnmodel})
         else:
             print("Can not load the Neural Network model named {}, it does not exist.".format(name))
