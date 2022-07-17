@@ -14,6 +14,7 @@ class NNModelResults(object):
     def __init__(self):
         self.history_map: Dict[str: List] = {}
         self.train_times_map: Dict[str: float] = {}
+        self.train_history_map = self.history_map
 
     def getPerf(self):
         return self.history_map

@@ -324,5 +324,4 @@ custom_objects = {"Linear": Linear,
                   "PredictorBlock": PredictorBlock,
                   "FeedForward": FeedForward,
                   "EncoderBlock": EncoderBlock,
-                  "CoViTModel": CoViTModel,
-                  "CoViTModel.deepen": CoViTModel.deepen}
+                  "CoViTModel": CoViTModel}

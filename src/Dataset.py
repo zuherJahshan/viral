@@ -76,6 +76,7 @@ class Dataset(object):
             else:
                 self.hps.updateSizes(train_size=0,
                                      valid_size=0)
+                return
 
         assert hps != None, \
             "Must provide Hyper parameters for building the dataset via hps."

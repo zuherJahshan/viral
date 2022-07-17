@@ -33,14 +33,15 @@ class CovitProject(object):
                    name: str,
                    nnmodel_hps: NNModelHPs=None,
                    other: str=None):
-        assert other != None or nnmodel_hps != None, \
-            "One of the arguments nnmodel_hps or other MUST be specified."
 
         # Check if exists
         if os.path.exists(self.nnmodels_path + name):
             print("A Neural Network model named {} already exists. loading it instead of creating".format(name))
             self.loadNNModel(name)
             return
+
+        assert other != None or nnmodel_hps != None, \
+            "One of the arguments nnmodel_hps or other MUST be specified."
 
         # If does not exist, create one...
         if other == None:
