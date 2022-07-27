@@ -78,13 +78,19 @@ class CovitProject(object):
     def train(self,
               name: str,
               epochs: int,
-              batch_size: int):
+              batch_size: int,
+              mini_batch_size: int = None):
         validset = self.dataset.getValidSet(batch_size)
-        self.name_nnmodel_map[name].train(trainset=self.dataset.getTrainSet(batch_size=batch_size,
+        if mini_batch_size == None:
+            mini_batch_size = batch_size
+        else:
+            self.name_nnmodel_map[name].setBatchSize(batch_size=batch_size,
+                                                     mini_batch_size=mini_batch_size)
+        self.name_nnmodel_map[name].train(trainset=self.dataset.getTrainSet(batch_size=mini_batch_size,
                                                                             epochs=epochs),
                                           trainset_size=self.dataset.getTrainSetSampleCount(),
                                           epochs=epochs,
-                                          batch_size=batch_size,
+                                          batch_size=mini_batch_size,
                                           validset=validset)
         self.name_nnmodel_map[name].save()
 
@@ -98,6 +104,21 @@ class CovitProject(object):
                  trainable: bool = False):
         if name in self.name_nnmodel_map:
             self.name_nnmodel_map[name].deepenNN(trainable=trainable)
+        else:
+            print("No Neural Network named {} exists in the system".format(name))
+
+    def changeNumClasses(self,
+                         name,
+                         classes):
+        if name in self.name_nnmodel_map:
+            self.name_nnmodel_map[name].changePredictorHead(classes=classes)
+        else:
+            print("No Neural Network named {} exists in the system".format(name))
+
+    def makeTrainable(self,
+                      name):
+        if name in self.name_nnmodel_map:
+            self.name_nnmodel_map[name].makeTrainable()
         else:
             print("No Neural Network named {} exists in the system".format(name))
 

@@ -6,6 +6,7 @@ from timeit import default_timer as timer
 from Genome import base_count
 
 import tensorflow as tf
+from GradientAccumulator import GradientAccumulator
 
 from Types import *
 from Model import CoViTModel, custom_objects
@@ -106,7 +107,7 @@ class NNModel(object):
             if self.load():
                 return
 
-        assert hps != None != None or other != None, \
+        assert hps != None or other != None, \
             "If creating a new mudel hps or other must be specified!"
         # Check if it is a model to copy
         if other != None:
@@ -133,11 +134,17 @@ class NNModel(object):
                              dropout_rate=self.hps.dropout_rate)
         self._compileNN()
 
+        input_shape = (1, 1, self.hps.d_model, base_count)
+        dummy = tf.random.uniform(input_shape)
+        self.nn(dummy)
+
+
     def _exists(self):
         return os.path.exists(self._getNNPath()) and os.path.exists()
 
     def _compileNN(self,
-                   nn=None):
+                   nn=None,
+                   steps=1):
         if nn == None:
             nn=self.nn
         metrics = [tf.keras.metrics.TopKCategoricalAccuracy(k=1,
@@ -147,8 +154,11 @@ class NNModel(object):
                    tf.keras.metrics.TopKCategoricalAccuracy(k=5,
                                                             name='top5_accuracy')
                    ]
+        optimizer = tf.keras.optimizers.Adam(clipnorm=1.0)
+        optimizer = GradientAccumulator(optimizer=optimizer,
+                                        accum_steps=steps)
         nn.compile(loss="categorical_crossentropy",
-                   optimizer=tf.keras.optimizers.Adam(clipnorm=1.0),
+                   optimizer=optimizer,
                    metrics=metrics)  # the optimizer will change after debugging
 
     def deepenNN(self,
@@ -160,8 +170,17 @@ class NNModel(object):
     def changePredictorHead(self,
                             classes):
         self.hps.classes = classes
-        self.nn.changePredictorHead(classes)
-        self._compileNN()
+        self.nn = self._copyNN(old_nn=self.nn,
+                               classes=classes)
+
+    def setBatchSize(self,
+                     batch_size,
+                     mini_batch_size):
+        assert batch_size % mini_batch_size == 0,\
+            "batch_size must be a multiplication of mini_batch_size."
+        grad_accum_steps = int(batch_size / mini_batch_size)
+        self.nn = self._copyNN(old_nn=self.nn,
+                               grad_accum_steps=grad_accum_steps)
 
     def train(self,
               trainset: tf.data.Dataset,
@@ -219,7 +238,6 @@ class NNModel(object):
         # Load the HPs
         self.hps: NNModelHPs = loadNNModelHPs(nnmodel_path=self.nnmodel_path)
         if self.hps == None:
-            print("here")
             return False
 
         # Load the results
@@ -238,18 +256,25 @@ class NNModel(object):
 
         return True
 
+    def makeTrainable(self):
+        for layer in self.nn.layers:
+            layer.trainable = True
 
     def _copyNN(self,
                 old_nn,
-                encoder_repeats: int = None):
+                encoder_repeats: int = None,
+                classes: int = None,
+                grad_accum_steps=1):
         # Create a new neural network
         if encoder_repeats == None:
-            encoder_repeats = self.hps.encoder_repeats
+            encoder_repeats = old_nn.get_config()["N"]
+        if classes == None:
+            classes = old_nn.get_config()["d_out"]
 
-        input_shape = (1, 1, self.hps.d_model, base_count)
+        input_shape = (1, 1, old_nn.get_config()["d_model"], base_count)
 
         new_nn = CoViTModel(N=encoder_repeats,
-                            d_out=old_nn.get_config()["d_out"],
+                            d_out=classes,
                             d_model=old_nn.get_config()["d_model"],
                             d_val=old_nn.get_config()["d_val"],
                             d_key=old_nn.get_config()["d_key"],
@@ -258,7 +283,8 @@ class NNModel(object):
                             dropout_rate=old_nn.get_config()["dropout_rate"])
 
         # compile
-        self._compileNN(new_nn)
+        self._compileNN(new_nn,
+                        steps=grad_accum_steps)
 
         # call it on a randomized input shape
         dummy = tf.random.uniform(input_shape)
@@ -272,4 +298,3 @@ class NNModel(object):
             new_nn.layers[i].set_weights(old_nn.layers[i].get_weights())
 
         return new_nn
-
