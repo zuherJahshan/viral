@@ -162,10 +162,12 @@ class NNModel(object):
                    metrics=metrics)  # the optimizer will change after debugging
 
     def deepenNN(self,
+                 new_layers: int = 1,
                  trainable: bool = False):
-        self.hps.encoder_repeats += 1
+        self.hps.encoder_repeats += num_layers
         self.nn = self._copyNN(old_nn=self.nn,
-                               encoder_repeats=self.hps.encoder_repeats)
+                               encoder_repeats=self.hps.encoder_repeats,
+                               trainable=trainable)
 
     def changePredictorHead(self,
                             classes):
@@ -195,8 +197,9 @@ class NNModel(object):
         history = self.nn.fit(x=trainset,
                               epochs=epochs,
                               steps_per_epoch=math.floor(trainset_size / batch_size),
-                              validation_data=validset,
-                              callbacks=[checkpoint_cb])
+                              #validation_data=validset
+                              #callbacks=[checkpoint_cb]
+                              )
         end = timer()
         self.results.appendTrainHist(history.history)
         self.results.appendTrainTimes({
@@ -264,7 +267,8 @@ class NNModel(object):
                 old_nn,
                 encoder_repeats: int = None,
                 classes: int = None,
-                grad_accum_steps=1):
+                grad_accum_steps=1,
+                trainable=True):
         # Create a new neural network
         if encoder_repeats == None:
             encoder_repeats = old_nn.get_config()["N"]
@@ -291,10 +295,16 @@ class NNModel(object):
         new_nn(dummy)
 
         # Layers to copy from the old NN is the base embedding layer, and all of the encoders that can be copied
-        layers_to_copy = 1 + min(encoder_repeats, old_nn.get_config()["N"])
+        ## If nothing changed, please copy all!
+        if encoder_repeats == old_nn.get_config()["N"] and classes == old_nn.get_config()["d_out"]:
+            layers_to_copy = len(old_nn.layers)
+        else:
+            layers_to_copy = 1 + min(encoder_repeats, old_nn.get_config()["N"])
 
         # copy weights from previous NN
         for i in range(layers_to_copy):
             new_nn.layers[i].set_weights(old_nn.layers[i].get_weights())
+            new_nn.layers[i].trainable = trainable
+
 
         return new_nn

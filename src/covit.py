@@ -101,9 +101,11 @@ class CovitProject(object):
 
     def deepenNN(self,
                  name: str,
+                 num_layers: int = 1,
                  trainable: bool = False):
         if name in self.name_nnmodel_map:
-            self.name_nnmodel_map[name].deepenNN(trainable=trainable)
+            self.name_nnmodel_map[name].deepenNN(num_layers=num_layers,
+                                                 trainable=trainable)
         else:
             print("No Neural Network named {} exists in the system".format(name))
 
