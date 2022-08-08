@@ -4,7 +4,9 @@ from NNModel import NNModelHPs, NNModel
 from Dataset import DatasetHPs, Dataset, base_count
 from DataCollector import DataCollectorv2
 from Types import *
+from PredData import PredData
 NameNNModelMap = Dict[str, NNModel]
+
 
 class CovitProject(object):
     """
@@ -101,18 +103,37 @@ class CovitProject(object):
 
     def predict(self,
                 model_name: str,
-                path_to_fasta_dir: str):
+                path_to_fasta_dir: str,
+                num_parallel_calls: int = 16,
+                batch_size=64,
+                k=5):
         """
         1. build a dataset containing the fasta files.
         2. predict
         3. build csv file
         """
-        pass
+        if not model_name in self.name_nnmodel_map:
+            print("Model name \"{}\" is not loaded to the system, please use loadNNModel first.".format(model_name))
+        if not os.path.exists(path_to_fasta_dir):
+            print("The path to the accessions directory \"{}\" does not exist.".format(path_to_fasta_dir))
+        pred_data = PredData(hps=self.dataset.hps,
+                             num_parallel_calls=num_parallel_calls,
+                             path_to_fasta_dir=path_to_fasta_dir)
+        data = pred_data.getData(batch_size=batch_size)
+        # Hold a directory of accessions and its results
+        for batch in data:
+            pred = self.name_nnmodel_map[model_name].predict(batch[0])
+            batch_accs = [acc.decode("utf-8") for acc in batch[1].numpy()]
+            results = tf.math.top_k(pred,
+                                    k=k)
+            pred_data.recordRes(acc_list=batch_accs,
+                                results=results)
 
     def deepenNN(self,
                  name: str,
                  num_layers: int = 1,
-                 trainable: bool = False):
+                 trainable: bool = False,
+                 k: int = 5):
         if name in self.name_nnmodel_map:
             self.name_nnmodel_map[name].deepenNN(num_layers=num_layers,
                                                  trainable=trainable)

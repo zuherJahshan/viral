@@ -217,6 +217,10 @@ class NNModel(object):
                  validset: tf.data.Dataset):
         return self.nn.evaluate(x=validset)
 
+    def predict(self,
+                data):
+        return self.nn(data)
+
     def save(self):
 
         # Save HPs

@@ -5,6 +5,8 @@ from Genome import Genome, base_count
 from Dataset import DatasetHPs
 from math import ceil, floor
 
+import threading
+import csv
 
 class PredData(object):
     def __init__(self,
@@ -18,14 +20,19 @@ class PredData(object):
         3. then you serialize the list of accessions for each tfrecord file in parallel
         4. then you create the dataset using interleave
         """
+        assert os.path.exists(path_to_fasta_dir),\
+            "The path you specified does not exist"
+        self.path_to_fasta_dir = path_to_fasta_dir
         self.tfrecord_files_path = path_to_fasta_dir + "/" + "tfrecord/"
-        self._createTfrecordAccsMaps(path_to_fasta_dir=path_to_fasta_dir,
-                                     num_parallel_calls=num_parallel_calls)
+        self.results_path = path_to_fasta_dir + "/" + "results.csv"
         self.hps = hps
-        for tfrecord in self.tfrecord_accs_map:
+
+        if not os.path.exists(self.tfrecord_files_path):
             # Create path
-            # serialize accessions list
-            pass
+            os.makedirs(self.tfrecord_files_path, exist_ok=True)  # maybe should do exist not okay...
+            self._createTfrecordFiles(path_to_fasta_dir=path_to_fasta_dir,
+                                      num_parallel_calls=num_parallel_calls)
+
 
     def getData(self,
                 batch_size: int = 1):
@@ -39,32 +46,73 @@ class PredData(object):
             batch(batch_size).\
             prefetch(tf.data.AUTOTUNE)
 
+    def recordRes(self,
+                  acc_list: List[Accession],
+                  results):
+        # If file does not exist, create it and insert the head
+        if not os.path.exists(self.results_path):
+            self.csv_file = open(self.results_path, 'w', encoding='UTF-8', newline='')
+            self.csv_writer = csv.writer(self.csv_file)
+
+            # create the header and write it
+            k = results.values.shape[-1]
+            header = ["accession"]
+            for i in range(1, k+1):
+                header += ["top-{} prediction".format(i), "top-{} probability".format(i)]
+            self.csv_writer.writerow(header)
+
+        # Extract the data into lists
+        batch_size = results.values.shape[0]
+        k = results.values.shape[-1]
+        indices = results.indices.numpy().tolist()
+        probs = results.values.numpy().tolist()
+        for i in range(batch_size):
+            data = [acc_list[i]]
+            for j in range(k):
+                lineage = self.hps.lineages[indices[i][j]]
+                prob = probs[i][j]
+                data += [lineage, prob]
+            self.csv_writer.writerow(data)
+
+
+
+
+
     #######################################
     #######Private member functions########
     #######################################
-    def _createTfrecordAccsMaps(self,
+    def _createTfrecordFiles(self,
                                 path_to_fasta_dir: str,
                                 num_parallel_calls: int = 1):
-        self.tfrecord_accs_map: Dict[str: List[str]] = {}
 
         # List files from fasta dir
         fasta_files = []
         for file in os.listdir(path_to_fasta_dir):
             # check only text files
-            if file.endswith('.txt'):
-                fasta_files.append(file)
+            if file.endswith('.fasta'):
+                fasta_files.append(path_to_fasta_dir + "/" + file)
 
         # iterate over the number of tfrecord files you want to create and fill the maps.
         max_accs_in_tfrecord_file = self._getMaxGenomesInTfrecordFile(num_parallel_calls=num_parallel_calls,
                                                                       num_fasta_files=len(fasta_files))
         idx = 0
         tfrecord_file = 1
+        threads = []
         while idx < len(fasta_files):
             new_idx = min(idx + max_accs_in_tfrecord_file, len(fasta_files))
-            self._serializeAccessionsList(accs_path=fasta_files[idx: new_idx],
-                                          tfrecordfile_path=self.tfrecord_files_path + str(tfrecord_file) + ".tfrecord")
+            thread = threading.Thread(
+                target=self._serializeAccessionsList,
+                args=(fasta_files[idx: new_idx],
+                      self.tfrecord_files_path + str(tfrecord_file) + ".tfrecord"
+                      )
+            )
+            threads.append(thread)
+            thread.start()
             idx = new_idx
             tfrecord_file += 1
+
+        for thread in threads:
+            thread.join()
 
 
     def _getTfrecordFilesNum(self,
@@ -128,7 +176,7 @@ class PredData(object):
 
     feature_description = {
             'tensor': tf.io.FixedLenFeature([], tf.string),
-            'label': tf.io.FixedLenFeature([], tf.string)
+            'accession': tf.io.FixedLenFeature([], tf.string)
     }
 
     def _deserializeGenomeTensor(self,
