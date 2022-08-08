@@ -1,9 +1,10 @@
 # Builtin packages
 import numpy as np
-from typing import Callable, List
+from typing import Callable
 from math import ceil, floor
 import hashlib
 from Types import *
+import os
 
 # Project packages
 from DataCollector import DataCollectorv2
@@ -116,18 +117,32 @@ class Genome(object):
     The purpose of this class is to return the different representations of the genome
     """
     def __init__(self,
-                 accession_id: str,
-                 data_collector = None):
+                 accession_id: str = None,
+                 data_collector = None,
+                 accession_path: str = None):
         # Initializing DataCollector
-        if data_collector is None:
-            self.data_collector: DataCollectorv2 = DataCollectorv2()
-        else:
-            self.data_collector = data_collector
+        assert accession_path != None or accession_id != None,\
+            "Must specify either the acc_path or the accession_id"
+        if accession_path is None:
+            if data_collector is None:
+                self.data_collector: DataCollectorv2 = DataCollectorv2()
+            else:
+                self.data_collector = data_collector
 
-        self.accession_id: str = accession_id
-        self.seq_filepath: str = self.data_collector.getAccPath(accession_id)
-        assert self.seq_filepath != "",\
-            "Accession {} was not found locally.".format(accession_id)
+            self.accession_id: str = accession_id
+            self.seq_filepath: str = self.data_collector.getAccPath(accession_id)
+            assert self.seq_filepath != "",\
+                "Accession {} was not found locally.".format(accession_id)
+
+        else:
+            # Check existence of the path
+            assert os.path.exists(accession_path),\
+                "File {} was not found.".format(accession_path)
+            self.accession_id = accession_path.split("/")[-1].split(".")[0]
+            self.seq_filepath = accession_path
+
+    def getAccId(self):
+        return self.accession_id
 
     def getSeq(self) -> Sequence:
         # Open file in "read only" mode
@@ -140,6 +155,7 @@ class Genome(object):
         for line in file:
             # Ignore first line (only holds metadata)
             if first_line is True:
+                self.accession_id = line.split("|")[1]
                 first_line = False
             else:
                 # Add the bases of the line to the sequence except of the last character which is always a ' '.

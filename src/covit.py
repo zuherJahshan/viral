@@ -99,6 +99,16 @@ class CovitProject(object):
                  batch_size: int):
         return self.name_nnmodel_map[name].evaluate(validset=self.dataset.getValidSet(batch_size=batch_size))
 
+    def predict(self,
+                model_name: str,
+                path_to_fasta_dir: str):
+        """
+        1. build a dataset containing the fasta files.
+        2. predict
+        3. build csv file
+        """
+        pass
+
     def deepenNN(self,
                  name: str,
                  num_layers: int = 1,
