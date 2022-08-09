@@ -32,7 +32,12 @@ To run the application, you MUST have the following:
 It is most preferable to run the application on a NVIDIA GPU!!!, it is not necessary but it will speed up the computations noticeably
 
 ## Usage example
-To run do
+First, go to the src directory and launch python
 
-        from DataCollector import DataCollectorv2
-        from covit import CovitProject
+    cd src/
+    python3.8
+
+Then in Python, first import the following packages
+
+    from DataCollector import DataCollectorv2
+    from covit import CovitProject
