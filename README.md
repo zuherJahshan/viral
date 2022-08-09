@@ -4,7 +4,7 @@
 * [Introduction](#introduction)
 * [Technologies](#technologies)
 * [Launch](#launch)
-* [Prediction usage example](#prediction usage example)
+* [Prediction usage example](#prediction_usage_example)
 
 ## Introduction
 CoViT is a program that rapidly predicts the type of variant of a given SARS-CoV-2 assembled genome sequence.
