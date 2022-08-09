@@ -33,5 +33,6 @@ It is most preferable to run the application on a NVIDIA GPU!!!, it is not neces
 
 ## Usage example
 To run do
-  from DataCollector import DataCollectorv2
-  from covit import CovitProject
+
+        from DataCollector import DataCollectorv2
+        from covit import CovitProject
