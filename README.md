@@ -23,4 +23,4 @@ To run the application, you MUST have the following:
 2. Numpy 1.22.3
 3. Pandas 1.4.2
 4. TensorFlow 2.9.1
-** It is most preferable to run the application on a NVIDIA GPU!!!, it is not necessary but it will speed up the computations noticeably **
+*It is most preferable to run the application on a NVIDIA GPU!!!, it is not necessary but it will speed up the computations noticeably*
