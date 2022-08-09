@@ -4,6 +4,7 @@
 * [Introduction](#introduction)
 * [Technologies](#technologies)
 * [Launch](#launch)
+* [Prediction usage example](#predEx)
 
 ## Introduction
 CoViT is a program that rapidly predicts the type of variant of a given SARS-CoV-2 assembled genome sequence.
@@ -31,7 +32,7 @@ To run the application, you MUST have the following:
 
 It is most preferable to run the application on a NVIDIA GPU!!!, it is not necessary but it will speed up the computations noticeably
 
-## Usage example
+## Prediction usage example
 First, go to the src directory and launch python
 
     cd src/
@@ -41,3 +42,46 @@ Then in Python, first import the following packages
 
     from DataCollector import DataCollectorv2
     from covit import CovitProject
+    
+Then, create the data collector, which is a class that manages local raw data and downloads newly remote data.
+But most importantly, it is used by the main class the CovitProject.
+
+    dc = DataCollectorv2()
+    
+Then, load an existing CovitProject. Up for now,
+we created 4 different projects which is differentiated by their names:
+1. 107Lins
+2. 189Lins
+3. 269Lins
+4. 375Lins
+
+Lets say, for an example that we load the 107Lins project
+
+    covit = CovitProject(project_name="107Lins",
+                         data_collector=dc)
+                     
+
+Then we need to load an existing prediction model to the project. To see which models exist just call:
+
+    covit.listNNModels()
+    
+Assume we take the last model in the list
+
+    model_name = covit.listNNModels()[-1]
+    
+And then we load it to RAM
+
+    covit.loadNNModel(name=model_name)
+    
+To make a prediction on an assembled genomes, you MUST have them held in some directory.
+Lets assume this directory is located in the relative path "../accs" (i.e., relative to the src directory)
+
+    path_to_fasta_dir = "../accs"
+    
+Then to make the prediction, just call:
+    
+    covit.predict(model_name=model_name,
+                  path_to_fasta_dir=path_to_fasta_dir)
+                  
+The predictions to all assembled genomes will be written in a csv file named "results.csv"
+which will be available in the directory that contains the assembled genomes (i.e., "../accs").
