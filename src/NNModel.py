@@ -222,19 +222,11 @@ class NNModel(object):
         return self.nn(data)
 
     def save(self):
-
         # Save HPs
         self.hps.save(nnmodel_path=self.nnmodel_path)
 
         # Save the results
         self.results.save(nnmodel_path=self.nnmodel_path)
-
-        # Save the Neural Network
-        # Remove old neural network and save the new one
-        # nn_path = self._getNNPath()
-        # if os.path.exists(nn_path):
-        #     shutil.rmtree(nn_path)
-        # self.nn.save(nn_path)
 
 
     def _getNNPath(self):

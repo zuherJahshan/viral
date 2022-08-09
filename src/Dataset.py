@@ -6,6 +6,7 @@ from Types import *
 from DataCollector import DataCollectorv2
 from Genome import Genome, base_count
 
+from enum import Enum
 
 class DatasetHPs(object):
     def __init__(self,
@@ -51,6 +52,12 @@ def loadDatasetHPs(dataset_path: str) -> DatasetHPs:
 
 
 class Dataset(object):
+
+    class State(Enum):
+        NOT_CREATED = 1
+        SAMPLES_AVAIL = 2
+        NO_SAMPLES = 3
+
     def __init__(self,
                  project_path: str,
                  data_collector: DataCollectorv2,
@@ -69,13 +76,14 @@ class Dataset(object):
         self.hps = hps
 
         # Check if dataset already exist in the project, if so, print a message and return.
-        if os.path.isdir(self.dataset_path):
+        state = self.getDatasetState()
+        if state == Dataset.State.NO_SAMPLES:
             self.hps = loadDatasetHPs(dataset_path=self.dataset_path)
-            if self._doesSamplesExist():
-                return
-            else:
-                self.hps.updateSizes(train_size=0,
-                                     valid_size=0)
+            self.hps.updateSizes(0, 0)
+            return
+        elif state == Dataset.State.SAMPLES_AVAIL:
+            self.hps = loadDatasetHPs(dataset_path=self.dataset_path)
+            return
 
         assert hps != None, \
             "Must provide Hyper parameters for building the dataset via hps."
@@ -102,6 +110,8 @@ class Dataset(object):
         """
         just returns the train set
         """
+        if self.getDatasetState() != Dataset.State.SAMPLES_AVAIL:
+            return None
         filepath_dataset = tf.data.Dataset.list_files(self._getTrainPath() + "*")
         return filepath_dataset.interleave(
             map_func=lambda filepath: tf.data.TFRecordDataset(filepath),
@@ -119,6 +129,8 @@ class Dataset(object):
         """
         Returns the validation set
         """
+        if self.getDatasetState() != Dataset.State.SAMPLES_AVAIL:
+            return None
         filepath_dataset = tf.data.Dataset.list_files(self._getValidPath() + "*")
         return filepath_dataset.interleave(
             map_func=lambda filepath: tf.data.TFRecordDataset(filepath),
@@ -136,6 +148,25 @@ class Dataset(object):
 
     def getValidSetSampleCount(self):
         return self.hps.valid_size
+
+    def getDatasetState(self):
+        """
+        Returns the state of the dataset, the state of the dataset can be
+        one of those following three states:
+        1. Not created yet.
+        2. created and datasets available.
+        3. created but datasets not available.
+        """
+        if os.path.isdir(self.dataset_path):
+            self.hps = loadDatasetHPs(dataset_path=self.dataset_path)
+            if self._doesSamplesExist():
+                return Dataset.State.SAMPLES_AVAIL
+            elif os.path.exists(self.dataset_path + "/hyperparameters.pickle"):
+                return Dataset.State.NO_SAMPLES
+            else:
+                return Dataset.State.NOT_CREATED
+        else:
+            return Dataset.State.NOT_CREATED
 
     #######################################
     #######Private member functions########

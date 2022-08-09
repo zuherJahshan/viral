@@ -19,6 +19,7 @@ class CovitProject(object):
                  project_name: str,
                  data_collector: DataCollectorv2,
                  dataset_hps: DatasetHPs = None):
+
         self.project_path = "../Projects/" + project_name + "/"
         self.nnmodels_path = self.project_path + "NNModels/"
         self.data_collector = data_collector
@@ -42,8 +43,8 @@ class CovitProject(object):
             self.loadNNModel(name)
             return
 
-        assert other != None or nnmodel_hps != None, \
-            "One of the arguments nnmodel_hps or other MUST be specified."
+        if other != None or nnmodel_hps != None:
+            print("One of the arguments \"nnmodel_hps\" or \"other\" MUST be specified to create a new model.")
 
         # If does not exist, create one...
         if other == None:
@@ -71,17 +72,30 @@ class CovitProject(object):
                               nnmodels_path=self.nnmodels_path)
             self.name_nnmodel_map.update({name: nnmodel})
         else:
-            print("Can not load the Neural Network model named {}, it does not exist.".format(name))
+            print("Can not load the Neural Network model named {}, it does not exist in the project.".format(name))
 
     def getResults(self,
                    name: str):
-        return self.name_nnmodel_map[name].getResults()
+        if name in self.name_nnmodel_map:
+            return self.name_nnmodel_map[name].getResults()
+        else:
+            return None
 
     def train(self,
               name: str,
               epochs: int,
               batch_size: int,
               mini_batch_size: int = None):
+        if self.dataset.getDatasetState() != Dataset.State.SAMPLES_AVAIL:
+            print("The dataset state can not allow training, only predicting!")
+            print("To train please create a new project.")
+        if not name in self.name_nnmodel_map:
+            print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
+            return
+        if epochs < 0:
+            print("epochs must be a positive number")
+
+
         validset = self.dataset.getValidSet(batch_size)
         if mini_batch_size == None:
             mini_batch_size = batch_size
@@ -99,6 +113,12 @@ class CovitProject(object):
     def evaluate(self,
                  name: str,
                  batch_size: int):
+        if self.dataset.getDatasetState() != Dataset.State.SAMPLES_AVAIL:
+            print("The dataset state can not allow training, only predicting!")
+            print("To train please create a new project.")
+        if not name in self.name_nnmodel_map:
+            print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
+            return
         return self.name_nnmodel_map[name].evaluate(validset=self.dataset.getValidSet(batch_size=batch_size))
 
     def predict(self,
@@ -138,7 +158,7 @@ class CovitProject(object):
             self.name_nnmodel_map[name].deepenNN(num_layers=num_layers,
                                                  trainable=trainable)
         else:
-            print("No Neural Network named {} exists in the system".format(name))
+            print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
 
     def changeNumClasses(self,
                          name,
@@ -146,14 +166,14 @@ class CovitProject(object):
         if name in self.name_nnmodel_map:
             self.name_nnmodel_map[name].changePredictorHead(classes=classes)
         else:
-            print("No Neural Network named {} exists in the system".format(name))
+            print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
 
     def makeTrainable(self,
                       name):
         if name in self.name_nnmodel_map:
             self.name_nnmodel_map[name].makeTrainable()
         else:
-            print("No Neural Network named {} exists in the system".format(name))
+            print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
 
     def listNNModels(self) -> List[str]:
         if os.path.exists(self.nnmodels_path):
