@@ -4,7 +4,7 @@
 * [Introduction](#introduction)
 * [Technologies](#technologies)
 * [Launch](#launch)
-* [Prediction usage example](#prediction)
+* [Prediction-usecase](#prediction-usecase)
 
 ## Introduction
 CoViT is a program that rapidly predicts the type of variant of a given SARS-CoV-2 assembled genome sequence.
@@ -32,7 +32,7 @@ To run the application, you MUST have the following:
 
 It is most preferable to run the application on a NVIDIA GPU!!!, it is not necessary but it will speed up the computations noticeably
 
-## Prediction usage example
+## Prediction-usecase
 First, go to the src directory and launch python
 
     cd src/
