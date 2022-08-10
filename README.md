@@ -94,3 +94,16 @@ Then to make the prediction, just call:
                   
 The predictions to all assembled genomes will be written in a csv file named "results.csv"
 which will be available in the directory that contains the assembled genomes (i.e., "../accs").
+
+This running example supplied as a standalone script:
+
+    from DataCollector import DataCollectorv2
+    from covit import CovitProject
+    dc = DataCollectorv2()
+    covit = CovitProject(project_name="107Lins",
+                         data_collector=dc)
+    model_name = covit.listNNModels()[-1]
+    covit.loadNNModel(name=model_name)
+    path_to_fasta_dir = "../ExampleAccs"
+    covit.predict(model_name=model_name,
+                  path_to_fasta_dir=path_to_fasta_dir)
