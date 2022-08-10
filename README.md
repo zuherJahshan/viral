@@ -36,6 +36,10 @@ To run the application, you MUST have the following:
 
 It is most preferable to run the application on a NVIDIA GPU!!!, it is not necessary but it will speed up the computations noticeably
 
+To launch the application, first you need to run the bash script "setup.sh" that is found in the project's root directory
+
+    ./setup.sh
+
 ## Prediction-usecase
 First, go to the src directory and launch python
 
