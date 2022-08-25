@@ -74,10 +74,6 @@ class PredData(object):
                 data += [lineage, prob]
             self.csv_writer.writerow(data)
 
-
-
-
-
     #######################################
     #######Private member functions########
     #######################################

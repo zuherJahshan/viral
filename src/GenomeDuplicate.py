@@ -13,6 +13,29 @@ base_idx_dict = {
 }
 
 class GenomeDuplicate(object):
+    """
+    The class will be named GenomeDuplicate, it will contain two main functionalities:
+    1. constructor - which will receive the genome length and an error profile
+    2. getNoisy - which will receive a base (one char representing a nucleic acid) and will return a seq of the noisy represntation according to the error profile.
+
+    The error profile:
+
+    imagine a reading head standing on top of a base:
+          |
+    ACCTATCAGTT
+
+    the error profile has the following tree structure:
+    1. successful read of the head
+        1.1 read the right value (C)
+            1.1.1 insertion (go again deciding 1.1.1 or 1.1.2)
+            1.1.2 no insertion (halt)
+        1.2 read a substitution (A, G, T) (with equal probabilities)
+            1.2.1 insertion (go again deciding 1.2.1 or 1.2.2)
+            1.2.2 no insertion (halt)
+    2. failure read of the head (delete)
+        2.1 insertion (go again deciding 2.1 or 2.2)
+        2.2 no insertion (halt)
+    """
     def __init__(self,
                  genome: str,
                  deletion_rate: float = 0.001,

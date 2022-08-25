@@ -1,10 +1,13 @@
 import os
 import pickle
 import random
+import threading
 
 from Types import *
 from DataCollector import DataCollectorv2
 from Genome import Genome, base_count
+
+from math import ceil
 
 from enum import Enum
 
@@ -75,6 +78,9 @@ class Dataset(object):
         self.data_collector = data_collector
         self.hps = hps
 
+        self.min_orig_accs_per_valid = 10
+        self.min_orig_accs_per_train = 16
+
         # Check if dataset already exist in the project, if so, print a message and return.
         state = self.getDatasetState()
         if state == Dataset.State.NO_SAMPLES:
@@ -94,13 +100,14 @@ class Dataset(object):
         # Iterate over the lineages, and for each lineage create a TFRecord file.
         train_set_size = 0
         valid_set_size = 0
+        self._checkLinAccsNumValidity()
         for lineage in self.hps.lineages:
             print("Started serializing {}".format(lineage))
             lin_train, lin_valid = self._serializeLineage(lineage)
             train_set_size += lin_train
             valid_set_size += lin_valid
         self.hps.updateSizes(train_size=train_set_size,
-                                     valid_size=valid_set_size)
+                             valid_size=valid_set_size)
         self.hps.save(self.dataset_path)
 
     def getTrainSet(self,
@@ -171,8 +178,26 @@ class Dataset(object):
     #######################################
     #######Private member functions########
     #######################################
+    def _checkLinAccsNumValidity(self):
+        for lin in self.hps.lineages:
+            accs_num = len(self.data_collector.getLocalAccessions(lineage=lin))
+            min_accs_num = self.min_orig_accs_per_valid + self.min_orig_accs_per_train
+            assert accs_num >= min_accs_num, \
+                "accessions number for the lineage {} is {}, but should be at least {}.".format(lin,
+                                                                                                accs_num,
+                                                                                                min_accs_num)
+
     def _doesSamplesExist(self):
         return os.path.exists(self.dataset_path + "Train/")
+
+    def _getTrainIdxSplit(self,
+                         orig_accs_num: int) -> int:
+        max_train_ex_num = orig_accs_num - self.min_orig_accs_per_valid
+        return min(int((1 - self.hps.validation_split)*orig_accs_num), max_train_ex_num)
+
+    def _getReplicasPerAcc(self,
+                           orig_train_ex_num: int):
+        return ceil(self.hps.max_accs_per_lineage / orig_train_ex_num)
 
     def _serializeLineage(self,
                          lineage: Lineage) -> Tuple[int, int]:
@@ -185,8 +210,10 @@ class Dataset(object):
         accessions = accessions[:self.hps.max_accs_per_lineage]
 
         # split the accessions list to train_accs, valid_accs
-        train_index_split = int((1 - self.hps.validation_split)*len(accessions))
+        train_index_split = self._getTrainIdxSplit(len(accessions))
         train_accs = accessions[:train_index_split]
+
+        replicas_per_acc = self._getReplicasPerAcc(len(train_accs))
         random.shuffle(train_accs)
         valid_accs = accessions[train_index_split:]
         random.shuffle(valid_accs)
@@ -198,9 +225,9 @@ class Dataset(object):
         # Serialize the accessions belonging to the lineage
         train_path = self._getTrainPath(lineage)
         valid_path = self._getValidPath(lineage)
-        self._serializeAccessionsList(lineage, train_accs, train_path)
-        self._serializeAccessionsList(lineage, valid_accs, valid_path)
-        return (len(train_accs), len(valid_accs))
+        train_ex = self._serializeAccessionsList(lineage, train_accs, train_path, replicas_per_acc=replicas_per_acc)
+        valid_ex = self._serializeAccessionsList(lineage, valid_accs, valid_path)
+        return train_ex, valid_ex
 
     def _buildLineageLabelMap(self,
                               lineages: List[Lineage]) -> LineageLabelMap:
@@ -216,24 +243,31 @@ class Dataset(object):
     def _serializeAccessionsList(self,
                                  lineage: Lineage,
                                  accs: List[Accession],
-                                 tfrecordfile_path: str):
+                                 tfrecordfile_path: str,
+                                 replicas_per_acc: int = 1) -> int:
+        serialized_tensors_num = 0
         with tf.io.TFRecordWriter(tfrecordfile_path) as f:
             # Iterate over the train accessions
             for acc in accs:
                 # Create a genome tensor for each accession.
                 genome = Genome(accession_id=acc,
                                 data_collector=self.data_collector)
-                tensor = genome.getFeatureTensor(kmer_size=self.hps.kmer_size,
+                tensors = genome.getFeatureTensor(kmer_size=self.hps.kmer_size,
                                                  fragment_size=self.hps.frag_len,
-                                                 n=self.hps.n)[0]
+                                                 n=self.hps.n,
+                                                 replicas_per_acc=replicas_per_acc)
                 label = self.lineage_label_map[lineage]
 
-                # Serialize the Genome tensor to create a suitable tf.train.Example protobuf object.
-                serialized_tensor = self._serializeGenomeTensor(tensor,
-                                                                label)
+                for tensor in tensors:
+                    serialized_tensors_num += 1
+                    # Serialize the Genome tensor to create a suitable tf.train.Example protobuf object.
+                    serialized_tensor = self._serializeGenomeTensor(tensor,
+                                                                    label)
 
-                # Dump serialized tensor to the file.
-                f.write(serialized_tensor.SerializeToString())
+                    # Dump serialized tensor to the file.
+                    f.write(serialized_tensor.SerializeToString())
+
+        return serialized_tensors_num
 
     def _getTrainPath(self,
                      lineage=None):
