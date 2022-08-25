@@ -3,13 +3,14 @@ import random
 
 base_count = 4
 
-base_array = ['A', 'C', 'G', 'T']
+base_array = ['A', 'C', 'G', 'T', 'N']
 
 base_idx_dict = {
     'A': 0,
     'C': 1,
     'G': 2,
-    'T': 3
+    'T': 3,
+    'N': 4
 }
 
 class GenomeDuplicate(object):
