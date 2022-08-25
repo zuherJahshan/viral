@@ -225,7 +225,7 @@ class Dataset(object):
                                 data_collector=self.data_collector)
                 tensor = genome.getFeatureTensor(kmer_size=self.hps.kmer_size,
                                                  fragment_size=self.hps.frag_len,
-                                                 n=self.hps.n)
+                                                 n=self.hps.n)[0]
                 label = self.lineage_label_map[lineage]
 
                 # Serialize the Genome tensor to create a suitable tf.train.Example protobuf object.

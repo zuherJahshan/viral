@@ -135,7 +135,7 @@ class PredData(object):
                 genome = Genome(accession_path=acc_path)
                 tensor = genome.getFeatureTensor(kmer_size=self.hps.kmer_size,
                                                  fragment_size=self.hps.frag_len,
-                                                 n=self.hps.n)
+                                                 n=self.hps.n)[0]
 
                 # Serialize the Genome tensor to create a suitable tf.train.Example protobuf object.
                 serialized_tensor = self._serializeGenomeTensor(tensor,

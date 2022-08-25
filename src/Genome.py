@@ -5,6 +5,7 @@ from math import ceil, floor
 import hashlib
 from Types import *
 import os
+from GenomeDuplicate import GenomeDuplicate
 
 # Project packages
 from DataCollector import DataCollectorv2
@@ -182,9 +183,9 @@ class Genome(object):
         else:
             return N_vec
 
-    def __vectorizeSeq(self):
+    def __vectorizeSeq(self,
+                       seq: str):
         # Vectorize the sequence O(sequence_length)
-        seq = self.getSeq()
         vec = np.zeros(shape=(len(seq), base_count))
         for i in range(len(seq)):
             vec[i, :] = self.__encodeBase(seq[i])
@@ -194,14 +195,31 @@ class Genome(object):
                          kmer_size: int,
                          fragment_size: int,
                          n: int,
-                         hasher: Hasher = hashlib_hasher) -> np.ndarray:
+                         replicas_per_acc: int = 1,
+                         hasher: Hasher = hashlib_hasher) -> List[np.ndarray]:
         """
         Creates a Genome tensor class and returns the tensor created by the class
         """
-        vec = self.__vectorizeSeq()
-        genome_tensor = GenomeTensor(genome_vec=vec,
-                                     kmer_size=kmer_size,
-                                     fragment_size=fragment_size,
-                                     n=n,
-                                     hasher=hasher)
-        return genome_tensor.getTensor()
+        assert replicas_per_acc > 0, "replicas_per_acc must be a positive integer."
+        tensors = []
+        for i in range(replicas_per_acc):
+            # Get original sequence or duplicate sequence
+            if i == 0:
+                seq = self.getSeq()
+            else:
+                genome_duplicate = GenomeDuplicate(genome=self.getSeq())
+                seq = genome_duplicate.getDuplicate()
+
+            # vectorize sequence
+            vec = self.__vectorizeSeq(seq)
+
+            # Create genome tensor.
+            genome_tensor = GenomeTensor(genome_vec=vec,
+                                         kmer_size=kmer_size,
+                                         fragment_size=fragment_size,
+                                         n=n,
+                                         hasher=hasher)
+
+            # Add to list of tensors
+            tensors.append(genome_tensor.getTensor())
+        return tensors
