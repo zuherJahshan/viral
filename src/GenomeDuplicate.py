@@ -72,6 +72,8 @@ class GenomeDuplicate(object):
     def _replacementNoise(self,
                           position):
         orig_base = self.genome[position]
+        if not orig_base in base_idx_dict:
+            orig_base = 'N'
         if self.replacement[position]:
             idx = (base_idx_dict[orig_base] + self.base_replacement[position]) % base_count
             return base_array[idx]
