@@ -193,9 +193,19 @@ class DataCollectorv2(object):
         self._buildLocalDicts()
         print("Done building local dicts")
 
+
+    def getRemoteLineages(self,
+                          accs_thresh: int):
+        lins = []
+        for lin in self.remote_lin_accs_dict:
+            if len(self.remote_lin_accs_dict[lin]) >= accs_thresh:
+                lins.append(lin)
+        return lins
+
     def downloadLineages(self,
                          accs_thresh: int,
-                         max_accs: int) -> None:
+                         max_accs: int,
+                         lineages: List[Lineage] = None) -> None:
         """
         Will download to the computer a maximum of "max_accs" accessions
         of all lineages that has more than "thresh" accessions.
@@ -205,8 +215,17 @@ class DataCollectorv2(object):
             2. if he has less than max_accs locally, then accessions will be downloaded till reaches a maximum of max_accs.
         """
         # Iterate over all remote lineages.
-        # TODO: Fix an error that
-        for lin in self.remote_lin_accs_dict:
+        iterable = None
+        if lineages is None:
+            iterable = self.remote_lin_accs_dict
+        else:
+            # Check validity
+            for lin in lineages:
+                if not lin in self.remote_lin_accs_dict:
+                    print("Error: Can't downoload lineage {}. It does not exist in the remote dataset.")
+            iterable = lineages
+
+        for lin in iterable:
             # If has less accessions than the threshold, just ignore it
             accs = self.remote_lin_accs_dict[lin]
             if len(accs) < accs_thresh:

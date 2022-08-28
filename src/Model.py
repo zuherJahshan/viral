@@ -111,6 +111,7 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
                  **kwargs):
         super().__init__(**kwargs)
         self.heads = heads
+        self.sim_matrices = [None] * self.heads
         self.lin_key_heads = [Linear(d_key) for _ in range(self.heads)]
         self.lin_qry_heads = [Linear(d_key) for _ in range(self.heads)]
         self.lin_val_heads = [Linear(d_val) for _ in range(self.heads)]
@@ -133,6 +134,8 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
             Z.append(self.scaled_dot_prod_attention(K=K,
                                                     V=V,
                                                     Q=Q))
+            self.sim_matrices[i] = self.scaled_dot_prod_attention.getSimMatrix()
+
         Z = tf.concat(Z, -1)
         return self.dropout(self.lin_out(Z) + X)
 
@@ -149,8 +152,11 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
             "dropout_rate": self.dropout_rate
         }
 
-    def getSimMatrix(self):
-        return self.scaled_dot_prod_attention.getSimMatrix()
+    def getSimMatrix(self,
+                     head: int):
+        if head >= self.heads:
+            head = -1
+        return self.sim_matrices[head]
 
     def get_config(self):
         config = super().get_config()
@@ -257,8 +263,9 @@ class EncoderBlock(tf.keras.layers.Layer):
         })
         return hp
 
-    def getSimMatrix(self):
-        return self.mha.getSimMatrix()
+    def getSimMatrix(self,
+                     head):
+        return self.mha.getSimMatrix(head)
 
     def get_config(self):
         config = super().get_config()
@@ -348,8 +355,9 @@ class CoViTModel(tf.keras.Model):
         config.update(self.encoder_blocks[0].getHP())
         return config
 
-    def getSimMatrix(self):
-        return self.encoder_blocks[0].getSimMatrix()
+    def getSimMatrix(self,
+                     head: int):
+        return self.encoder_blocks[0].getSimMatrix(head)
 
 class JensenShannonLoss(tf.keras.losses.Loss):
     def __init__(self,

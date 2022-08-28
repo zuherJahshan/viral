@@ -64,6 +64,7 @@ class Dataset(object):
     def __init__(self,
                  project_path: str,
                  data_collector: DataCollectorv2,
+                 augmented_data: bool = False,
                  hps: DatasetHPs = None):
         """
         Each dataset you build depends on some project.
@@ -76,7 +77,9 @@ class Dataset(object):
         self.project_path = project_path
         self.dataset_path = project_path + "Dataset/"
         self.data_collector = data_collector
+        self.augmented_data = augmented_data
         self.hps = hps
+
 
         self.min_orig_accs_per_valid = 10
         self.min_orig_accs_per_train = 16
@@ -197,7 +200,10 @@ class Dataset(object):
 
     def _getReplicasPerAcc(self,
                            orig_train_ex_num: int):
-        return ceil(self.hps.max_accs_per_lineage / orig_train_ex_num)
+        if self.augmented_data:
+            return ceil(self.hps.max_accs_per_lineage / orig_train_ex_num)
+        else:
+            return 1
 
     def _serializeLineage(self,
                          lineage: Lineage) -> Tuple[int, int]:

@@ -197,8 +197,8 @@ class NNModel(object):
         history = self.nn.fit(x=trainset,
                               epochs=epochs,
                               steps_per_epoch=math.floor(trainset_size / batch_size),
-                              #validation_data=validset
-                              #callbacks=[checkpoint_cb]
+                              validation_data=validset,
+                              callbacks=[checkpoint_cb],
                               )
         end = timer()
         self.results.appendTrainHist(history.history)
@@ -222,9 +222,10 @@ class NNModel(object):
         return self.nn(data)
 
     def getSimMatrix(self,
-                     data):
+                     data,
+                     head: int):
         self.nn(data)
-        return self.nn.getSimMatrix().numpy()
+        return self.nn.getSimMatrix(head).numpy()
 
     def save(self):
         # Save HPs

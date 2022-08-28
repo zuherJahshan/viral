@@ -157,7 +157,8 @@ class CovitProject(object):
                            model_name: str,
                            path_to_fasta_dir: str,
                            num_parallel_calls: int = 16,
-                           batch_size=64):
+                           batch_size=64,
+                           head: int = 0):
         if not model_name in self.name_nnmodel_map:
             print("Model name \"{}\" is not loaded to the system, please use loadNNModel first.".format(model_name))
             return
@@ -172,9 +173,10 @@ class CovitProject(object):
         data = pred_data.getData(batch_size=batch_size)
 
         for batch in data:
-            sim_matrix = self.name_nnmodel_map[model_name].getSimMatrix(batch[0])
+            sim_matrix = self.name_nnmodel_map[model_name].getSimMatrix(batch[0],
+                                                                        head=head)
             batch_accs = [acc.decode("utf-8") for acc in batch[1].numpy()]
-            for i in range(len(batch)):
+            for i in range(len(batch[0])):
                 print(batch_accs[i])
                 print(sim_matrix[i])
                 fname = path_to_fasta_dir + "/" + batch_accs[i] + ".png"
