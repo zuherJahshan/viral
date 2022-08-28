@@ -12,7 +12,8 @@ class PredData(object):
     def __init__(self,
                  hps: DatasetHPs,
                  path_to_fasta_dir: str,
-                 num_parallel_calls: int):
+                 num_parallel_calls: int,
+                 record_res: bool = True):
         """
         1. First you choose the number of tfrecord files
         2. then you build a map from accession -> tfrecord file
@@ -24,6 +25,7 @@ class PredData(object):
             "The path you specified does not exist"
         self.path_to_fasta_dir = path_to_fasta_dir
         self.tfrecord_files_path = path_to_fasta_dir + "/" + "tfrecord/"
+        self.record_res = record_res
         self.results_path = path_to_fasta_dir + "/" + "results.csv"
         self.hps = hps
 
@@ -49,6 +51,8 @@ class PredData(object):
     def recordRes(self,
                   acc_list: List[Accession],
                   results):
+        if not self.record_res:
+            return
         # If file does not exist, create it and insert the head
         if not os.path.exists(self.results_path):
             self.csv_file = open(self.results_path, 'w', encoding='UTF-8', newline='')

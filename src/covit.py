@@ -5,6 +5,8 @@ from Dataset import DatasetHPs, Dataset, base_count
 from DataCollector import DataCollectorv2
 from Types import *
 from PredData import PredData
+from matplotlib import pyplot as plt
+import numpy as np
 NameNNModelMap = Dict[str, NNModel]
 
 
@@ -134,8 +136,10 @@ class CovitProject(object):
         """
         if not model_name in self.name_nnmodel_map:
             print("Model name \"{}\" is not loaded to the system, please use loadNNModel first.".format(model_name))
+            return
         if not os.path.exists(path_to_fasta_dir):
             print("The path to the accessions directory \"{}\" does not exist.".format(path_to_fasta_dir))
+            return
         pred_data = PredData(hps=self.dataset.hps,
                              num_parallel_calls=num_parallel_calls,
                              path_to_fasta_dir=path_to_fasta_dir)
@@ -148,6 +152,51 @@ class CovitProject(object):
                                     k=k)
             pred_data.recordRes(acc_list=batch_accs,
                                 results=results)
+
+    def getAttentionImages(self,
+                           model_name: str,
+                           path_to_fasta_dir: str,
+                           num_parallel_calls: int = 16,
+                           batch_size=64):
+        if not model_name in self.name_nnmodel_map:
+            print("Model name \"{}\" is not loaded to the system, please use loadNNModel first.".format(model_name))
+            return
+        if not os.path.exists(path_to_fasta_dir):
+            print("The path to the accessions directory \"{}\" does not exist.".format(path_to_fasta_dir))
+            return
+
+        pred_data = PredData(hps=self.dataset.hps,
+                             num_parallel_calls=num_parallel_calls,
+                             path_to_fasta_dir=path_to_fasta_dir)
+
+        data = pred_data.getData(batch_size=batch_size)
+
+        for batch in data:
+            sim_matrix = self.name_nnmodel_map[model_name].getSimMatrix(batch[0])
+            batch_accs = [acc.decode("utf-8") for acc in batch[1].numpy()]
+            for i in range(len(batch)):
+                print(batch_accs[i])
+                print(sim_matrix[i])
+                fname = path_to_fasta_dir + "/" + batch_accs[i] + ".png"
+                print(fname)
+                self._matToImage(fname=fname,
+                                 X=sim_matrix[i])
+
+    def _matToImage(self,
+                    fname,
+                    X):
+        # Scale image
+        X = X * 255
+        X = X.astype(np.uint8)
+
+        # Show image
+        plt.imsave(fname=fname,
+                   arr=X,
+                   cmap="gray",
+                   vmin=0,
+                   vmax=255)
+
+
 
     def deepenNN(self,
                  name: str,

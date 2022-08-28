@@ -68,6 +68,7 @@ class ScaledDotProductAttention(tf.keras.layers.Layer):
                  **kwargs):
         super().__init__(**kwargs)
         self.softmax = tf.keras.layers.Softmax()
+        self.similarity = None
 
     def call(self,
              K,
@@ -91,9 +92,13 @@ class ScaledDotProductAttention(tf.keras.layers.Layer):
 
         # SoftMax
         Z = self.softmax(Z)
+        self.similarity = Z
 
         # Matmul with values and return
         return Z @ V
+
+    def getSimMatrix(self):
+        return self.similarity
 
 
 class MyMultiHeadAttention(tf.keras.layers.Layer):
@@ -143,6 +148,9 @@ class MyMultiHeadAttention(tf.keras.layers.Layer):
             "heads": self.heads,
             "dropout_rate": self.dropout_rate
         }
+
+    def getSimMatrix(self):
+        return self.scaled_dot_prod_attention.getSimMatrix()
 
     def get_config(self):
         config = super().get_config()
@@ -249,6 +257,9 @@ class EncoderBlock(tf.keras.layers.Layer):
         })
         return hp
 
+    def getSimMatrix(self):
+        return self.mha.getSimMatrix()
+
     def get_config(self):
         config = super().get_config()
         config.update(self.getHP())
@@ -336,6 +347,9 @@ class CoViTModel(tf.keras.Model):
         })
         config.update(self.encoder_blocks[0].getHP())
         return config
+
+    def getSimMatrix(self):
+        return self.encoder_blocks[0].getSimMatrix()
 
 class JensenShannonLoss(tf.keras.losses.Loss):
     def __init__(self,

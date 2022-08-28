@@ -221,6 +221,11 @@ class NNModel(object):
                 data):
         return self.nn(data)
 
+    def getSimMatrix(self,
+                     data):
+        self.nn(data)
+        return self.nn.getSimMatrix().numpy()
+
     def save(self):
         # Save HPs
         self.hps.save(nnmodel_path=self.nnmodel_path)
