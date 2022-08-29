@@ -82,9 +82,10 @@ And then we load it to RAM
     covit.loadNNModel(name=model_name)
     
 To make a prediction on an assembled genomes, you MUST have them held in some directory.
-Lets assume this directory is located in the relative path "../accs" (i.e., relative to the src directory)
+We provide an examplary directory that holds assembled genomes in FASTA format that is located
+in the relative path "../ExampleAccs" (i.e., relative to the src directory).
 
-    path_to_fasta_dir = "../accs"
+    path_to_fasta_dir = "../ExampleAccs"
     
 Then to make the prediction, just call:
     
@@ -93,3 +94,16 @@ Then to make the prediction, just call:
                   
 The predictions to all assembled genomes will be written in a csv file named "results.csv"
 which will be available in the directory that contains the assembled genomes (i.e., "../accs").
+
+This running example supplied as a standalone script:
+
+    from DataCollector import DataCollectorv2
+    from covit import CovitProject
+    dc = DataCollectorv2()
+    covit = CovitProject(project_name="107Lins",
+                         data_collector=dc)
+    model_name = covit.listNNModels()[-1]
+    covit.loadNNModel(name=model_name)
+    path_to_fasta_dir = "../ExampleAccs"
+    covit.predict(model_name=model_name,
+                  path_to_fasta_dir=path_to_fasta_dir)
