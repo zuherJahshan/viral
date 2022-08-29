@@ -195,31 +195,26 @@ class Genome(object):
                          kmer_size: int,
                          fragment_size: int,
                          n: int,
-                         replicas_per_acc: int = 1,
+                         replica: bool = False,
                          hasher: Hasher = hashlib_hasher) -> List[np.ndarray]:
         """
         Creates a Genome tensor class and returns the tensor created by the class
         """
-        assert replicas_per_acc > 0, "replicas_per_acc must be a positive integer."
-        tensors = []
-        for i in range(replicas_per_acc):
-            # Get original sequence or duplicate sequence
-            if i == 0:
-                seq = self.getSeq()
-            else:
-                genome_duplicate = GenomeDuplicate(genome=self.getSeq())
-                seq = genome_duplicate.getDuplicate()
+        # Get original sequence or duplicate sequence
+        if not replica:
+            seq = self.getSeq()
+        else:
+            genome_duplicate = GenomeDuplicate(genome=self.getSeq())
+            seq = genome_duplicate.getDuplicate()
 
-            # vectorize sequence
-            vec = self.__vectorizeSeq(seq)
+        # vectorize sequence
+        vec = self.__vectorizeSeq(seq)
 
-            # Create genome tensor.
-            genome_tensor = GenomeTensor(genome_vec=vec,
-                                         kmer_size=kmer_size,
-                                         fragment_size=fragment_size,
-                                         n=n,
-                                         hasher=hasher)
+        # Create genome tensor.
+        genome_tensor = GenomeTensor(genome_vec=vec,
+                                     kmer_size=kmer_size,
+                                     fragment_size=fragment_size,
+                                     n=n,
+                                     hasher=hasher)
 
-            # Add to list of tensors
-            tensors.append(genome_tensor.getTensor())
-        return tensors
+        return genome_tensor.getTensor()

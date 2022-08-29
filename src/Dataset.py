@@ -254,24 +254,26 @@ class Dataset(object):
         serialized_tensors_num = 0
         with tf.io.TFRecordWriter(tfrecordfile_path) as f:
             # Iterate over the train accessions
-            for acc in accs:
+            while serialized_tensors_num < self.hps.max_accs_per_lineage:
+                idx = serialized_tensors_num % len(accs)
+                acc = accs[idx]
                 # Create a genome tensor for each accession.
                 genome = Genome(accession_id=acc,
                                 data_collector=self.data_collector)
-                tensors = genome.getFeatureTensor(kmer_size=self.hps.kmer_size,
+                tensor = genome.getFeatureTensor(kmer_size=self.hps.kmer_size,
                                                  fragment_size=self.hps.frag_len,
                                                  n=self.hps.n,
-                                                 replicas_per_acc=replicas_per_acc)
+                                                 replica=(serialized_tensors_num >= len(accs)))
                 label = self.lineage_label_map[lineage]
 
-                for tensor in tensors:
-                    serialized_tensors_num += 1
-                    # Serialize the Genome tensor to create a suitable tf.train.Example protobuf object.
-                    serialized_tensor = self._serializeGenomeTensor(tensor,
-                                                                    label)
+                # Serialize the Genome tensor to create a suitable tf.train.Example protobuf object.
+                serialized_tensor = self._serializeGenomeTensor(tensor,
+                                                                label)
 
-                    # Dump serialized tensor to the file.
-                    f.write(serialized_tensor.SerializeToString())
+                # Dump serialized tensor to the file.
+                f.write(serialized_tensor.SerializeToString())
+
+                serialized_tensors_num += 1
 
         return serialized_tensors_num
 
