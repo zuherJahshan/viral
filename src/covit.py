@@ -83,6 +83,9 @@ class CovitProject(object):
         else:
             return None
 
+    def getLineages(self):
+        return self.dataset.getLineages()
+
     def train(self,
               name: str,
               epochs: int,
