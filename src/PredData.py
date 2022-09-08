@@ -5,6 +5,8 @@ from Genome import Genome, base_count
 from Dataset import DatasetHPs
 from math import ceil, floor
 
+import numpy as np
+
 import threading
 import csv
 
@@ -136,10 +138,11 @@ class PredData(object):
                 tensor = genome.getFeatureTensor(kmer_size=self.hps.kmer_size,
                                                  fragment_size=self.hps.frag_len,
                                                  n=self.hps.n)
+                acc_id = genome.getAccId()
 
                 # Serialize the Genome tensor to create a suitable tf.train.Example protobuf object.
                 serialized_tensor = self._serializeGenomeTensor(tensor,
-                                                                genome.getAccId())
+                                                                acc_id)
 
                 # Dump serialized tensor to the file.
                 f.write(serialized_tensor.SerializeToString())
