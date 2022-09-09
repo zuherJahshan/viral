@@ -1,4 +1,9 @@
 # CoViT: Real-time phylogenetics for the SARS-CoV-2 pandemic using Vision Transformers
+<img
+  src="covit-logo.png"
+  alt="Alt text"
+  title="Optional title"
+  style="display: inline-block; margin: 0 auto; max-width: 300px">
 
 ## Table of contents
 * [Introduction](#introduction)
