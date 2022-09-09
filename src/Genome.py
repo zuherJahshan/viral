@@ -224,6 +224,4 @@ class Genome(object):
                                      hasher=hasher)
         tensor = genome_tensor.getTensor()
 
-        tensor = np.random.rand(n, fragment_size, base_count)
-
         return tensor

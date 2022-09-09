@@ -219,10 +219,8 @@ class Dataset(object):
         train_index_split = self._getTrainIdxSplit(len(accessions))
         train_accs = accessions[:train_index_split]
 
-        replicas_per_acc = self._getReplicasPerAcc(len(train_accs))
         random.shuffle(train_accs)
         valid_accs = accessions[train_index_split:]
-        random.shuffle(valid_accs)
 
         # Create the project path if does not yet exist
         os.makedirs(self._getTrainPath(), exist_ok=True)
@@ -231,8 +229,8 @@ class Dataset(object):
         # Serialize the accessions belonging to the lineage
         train_path = self._getTrainPath(lineage)
         valid_path = self._getValidPath(lineage)
-        train_ex = self._serializeAccessionsList(lineage, train_accs, train_path, replicas_per_acc=replicas_per_acc)
-        valid_ex = self._serializeAccessionsList(lineage, valid_accs, valid_path)
+        train_ex = self._serializeAccessionsList(lineage, train_accs, train_path, True)
+        valid_ex = self._serializeAccessionsList(lineage, valid_accs, valid_path, False)
         return train_ex, valid_ex
 
     def _buildLineageLabelMap(self,
@@ -250,11 +248,15 @@ class Dataset(object):
                                  lineage: Lineage,
                                  accs: List[Accession],
                                  tfrecordfile_path: str,
-                                 replicas_per_acc: int = 1) -> int:
+                                 is_trainset: bool) -> int:
         serialized_tensors_num = 0
         with tf.io.TFRecordWriter(tfrecordfile_path) as f:
             # Iterate over the train accessions
-            while serialized_tensors_num < self.hps.max_accs_per_lineage:
+            if self.augmented_data and is_trainset:
+                accs_to_serialize = self.hps.max_accs_per_lineage
+            else:
+                accs_to_serialize = len(accs)
+            while serialized_tensors_num < accs_to_serialize:
                 idx = serialized_tensors_num % len(accs)
                 acc = accs[idx]
                 # Create a genome tensor for each accession.
