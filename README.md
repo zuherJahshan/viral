@@ -20,6 +20,9 @@ We use the principles of vision transformer to infer the phylogeny of an assembl
 We apply a pre-processing step that employs MinHash, whose role is extracting the informative sub-sequences from the genome,
 which are further fed into a modified vision transformer for classification.
 
+For further information, refer to: https://arxiv.org/abs/2208.05004
+
+
 ## Technologies
 Ubuntu 20.04.4 LTS
 
