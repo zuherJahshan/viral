@@ -1,4 +1,9 @@
 # CoViT: Real-time phylogenetics for the SARS-CoV-2 pandemic using Vision Transformers
+<img
+  src="covit-logo.png"
+  alt="Alt text"
+  title="Optional title"
+  style="display: inline-block; margin: 0 auto; max-width: 300px">
 
 ## Table of contents
 * [Introduction](#introduction)
@@ -14,6 +19,9 @@ CoViT is based on vision transformer, a neural network primarily developed for i
 We use the principles of vision transformer to infer the phylogeny of an assembled SARS-CoV-2 genome.
 We apply a pre-processing step that employs MinHash, whose role is extracting the informative sub-sequences from the genome,
 which are further fed into a modified vision transformer for classification.
+
+For further information, refer to: https://arxiv.org/abs/2208.05004
+
 
 ## Technologies
 Ubuntu 20.04.4 LTS
