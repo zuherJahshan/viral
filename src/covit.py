@@ -100,15 +100,15 @@ class CovitProject(object):
         if epochs < 0:
             print("epochs must be a positive number")
 
-
-        validset = self.dataset.getValidSet(batch_size)
         if mini_batch_size == None:
             mini_batch_size = batch_size
         else:
             self.name_nnmodel_map[name].setBatchSize(batch_size=batch_size,
                                                      mini_batch_size=mini_batch_size)
-        self.name_nnmodel_map[name].train(trainset=self.dataset.getTrainSet(batch_size=mini_batch_size,
-                                                                            epochs=epochs),
+        validset = self.dataset.getValidSet(mini_batch_size)
+        trainset = self.dataset.getTrainSet(batch_size=mini_batch_size,
+                                            epochs=epochs)
+        self.name_nnmodel_map[name].train(trainset=trainset,
                                           trainset_size=self.dataset.getTrainSetSampleCount(),
                                           epochs=epochs,
                                           batch_size=mini_batch_size,
@@ -209,7 +209,7 @@ class CovitProject(object):
                  trainable: bool = False,
                  k: int = 5):
         if name in self.name_nnmodel_map:
-            self.name_nnmodel_map[name].deepenNN(num_layers=num_layers,
+            self.name_nnmodel_map[name].deepenNN(new_layers=num_layers,
                                                  trainable=trainable)
         else:
             print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))

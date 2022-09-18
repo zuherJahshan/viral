@@ -164,7 +164,7 @@ class NNModel(object):
     def deepenNN(self,
                  new_layers: int = 1,
                  trainable: bool = False):
-        self.hps.encoder_repeats += num_layers
+        self.hps.encoder_repeats += new_layers
         self.nn = self._copyNN(old_nn=self.nn,
                                encoder_repeats=self.hps.encoder_repeats,
                                trainable=trainable)
@@ -307,6 +307,5 @@ class NNModel(object):
         for i in range(layers_to_copy):
             new_nn.layers[i].set_weights(old_nn.layers[i].get_weights())
             new_nn.layers[i].trainable = trainable
-
 
         return new_nn
