@@ -116,7 +116,7 @@ class Dataset(object):
     def getTrainSet(self,
                     batch_size: int,
                     epochs: int,
-                    shuffle_buffer_size: int = 1024) -> tf.data.Dataset:
+                    shuffle_buffer_size: int = 4096) -> tf.data.Dataset:
         """
         just returns the train set
         """

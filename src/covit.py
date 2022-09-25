@@ -9,7 +9,6 @@ from matplotlib import pyplot as plt
 import numpy as np
 NameNNModelMap = Dict[str, NNModel]
 
-
 class CovitProject(object):
     """
     This class defines the covit project. In the initialization one can create a new project or load an existing one.

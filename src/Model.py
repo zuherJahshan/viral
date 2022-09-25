@@ -33,7 +33,7 @@ class Linear(tf.keras.layers.Layer):
             name="kernel",
             shape=[batch_input_shape[-1], self.units],
             initializer="glorot_normal",
-            regularizer=tf.keras.regularizers.L2(0.001),
+            regularizer=tf.keras.regularizers.L2(0.00000001),
             #constraint=tf.keras.constraints.max_norm(2.0)
         )
         self.bias = self.add_weight(
