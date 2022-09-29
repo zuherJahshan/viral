@@ -101,7 +101,7 @@ class NNModel(object):
                  hps: NNModelHPs=None,
                  other=None):
         self.nnmodel_path = nnmodels_path + name + "/"
-
+        self._grad_accum_steps = 1
         # Check if model exists
         if os.path.exists(self.nnmodel_path):
             if self.load():
@@ -143,10 +143,9 @@ class NNModel(object):
         return os.path.exists(self._getNNPath()) and os.path.exists()
 
     def _compileNN(self,
-                   nn=None,
-                   steps=1):
+                   nn=None):
         if nn == None:
-            nn=self.nn
+            nn = self.nn
         metrics = [tf.keras.metrics.TopKCategoricalAccuracy(k=1,
                                                             name='top1_accuracy'),
                    tf.keras.metrics.TopKCategoricalAccuracy(k=2,
@@ -156,7 +155,7 @@ class NNModel(object):
                    ]
         optimizer = tf.keras.optimizers.Adam(clipnorm=1.0)
         optimizer = GradientAccumulator(optimizer=optimizer,
-                                        accum_steps=steps)
+                                        accum_steps=self._grad_accum_steps)
         nn.compile(loss="categorical_crossentropy",
                    optimizer=optimizer,
                    metrics=metrics)  # the optimizer will change after debugging
@@ -165,6 +164,7 @@ class NNModel(object):
                  new_layers: int = 1,
                  trainable: bool = False):
         self.hps.encoder_repeats += new_layers
+        print(self.hps.encoder_repeats)
         self.nn = self._copyNN(old_nn=self.nn,
                                encoder_repeats=self.hps.encoder_repeats,
                                trainable=trainable)
@@ -180,9 +180,8 @@ class NNModel(object):
                      mini_batch_size):
         assert batch_size % mini_batch_size == 0,\
             "batch_size must be a multiplication of mini_batch_size."
-        grad_accum_steps = int(batch_size / mini_batch_size)
-        self.nn = self._copyNN(old_nn=self.nn,
-                               grad_accum_steps=grad_accum_steps)
+        self._grad_accum_steps = int(batch_size / mini_batch_size)
+        self._compileNN()
 
     def train(self,
               trainset: tf.data.Dataset,
@@ -264,12 +263,12 @@ class NNModel(object):
     def makeTrainable(self):
         for layer in self.nn.layers:
             layer.trainable = True
+        self._compileNN()
 
     def _copyNN(self,
                 old_nn,
                 encoder_repeats: int = None,
                 classes: int = None,
-                grad_accum_steps=1,
                 trainable=True):
         # Create a new neural network
         if encoder_repeats == None:
@@ -279,6 +278,7 @@ class NNModel(object):
 
         input_shape = (1, 1, old_nn.get_config()["d_model"], base_count)
 
+        print("Encoder repeats is: {}".format(encoder_repeats))
         new_nn = CoViTModel(N=encoder_repeats,
                             d_out=classes,
                             d_model=old_nn.get_config()["d_model"],
@@ -289,8 +289,7 @@ class NNModel(object):
                             dropout_rate=old_nn.get_config()["dropout_rate"])
 
         # compile
-        self._compileNN(new_nn,
-                        steps=grad_accum_steps)
+        self._compileNN(new_nn)
 
         # call it on a randomized input shape
         dummy = tf.random.uniform(input_shape)
@@ -307,5 +306,7 @@ class NNModel(object):
         for i in range(layers_to_copy):
             new_nn.layers[i].set_weights(old_nn.layers[i].get_weights())
             new_nn.layers[i].trainable = trainable
+
+        self._compileNN(new_nn)
 
         return new_nn

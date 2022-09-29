@@ -89,7 +89,9 @@ class CovitProject(object):
               name: str,
               epochs: int,
               batch_size: int,
-              mini_batch_size: int = None):
+              mini_batch_size: int = None,
+              min_mask_rate: float = 0.0,
+              max_mask_rate: float = 0.0):
         if self.dataset.getDatasetState() != Dataset.State.SAMPLES_AVAIL:
             print("The dataset state can not allow training, only predicting!")
             print("To train please create a new project.")
@@ -104,9 +106,13 @@ class CovitProject(object):
         else:
             self.name_nnmodel_map[name].setBatchSize(batch_size=batch_size,
                                                      mini_batch_size=mini_batch_size)
-        validset = self.dataset.getValidSet(mini_batch_size)
+        validset = self.dataset.getValidSet(mini_batch_size,
+                                            min_mask_rate=min_mask_rate,
+                                            max_mask_rate=max_mask_rate)
         trainset = self.dataset.getTrainSet(batch_size=mini_batch_size,
-                                            epochs=epochs)
+                                            epochs=epochs,
+                                            min_mask_rate=min_mask_rate,
+                                            max_mask_rate=max_mask_rate)
         self.name_nnmodel_map[name].train(trainset=trainset,
                                           trainset_size=self.dataset.getTrainSetSampleCount(),
                                           epochs=epochs,
@@ -116,14 +122,18 @@ class CovitProject(object):
 
     def evaluate(self,
                  name: str,
-                 batch_size: int):
+                 batch_size: int,
+                 min_mask_rate: float = 0.0,
+                 max_mask_rate: float = 0.0):
         if self.dataset.getDatasetState() != Dataset.State.SAMPLES_AVAIL:
             print("The dataset state can not allow training, only predicting!")
             print("To train please create a new project.")
         if not name in self.name_nnmodel_map:
             print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
             return
-        return self.name_nnmodel_map[name].evaluate(validset=self.dataset.getValidSet(batch_size=batch_size))
+        return self.name_nnmodel_map[name].evaluate(validset=self.dataset.getValidSet(batch_size=batch_size,
+                                                                                      min_mask_rate=min_mask_rate,
+                                                                                      max_mask_rate=max_mask_rate))
 
     def predict(self,
                 model_name: str,
@@ -205,8 +215,7 @@ class CovitProject(object):
     def deepenNN(self,
                  name: str,
                  num_layers: int = 1,
-                 trainable: bool = False,
-                 k: int = 5):
+                 trainable: bool = False):
         if name in self.name_nnmodel_map:
             self.name_nnmodel_map[name].deepenNN(new_layers=num_layers,
                                                  trainable=trainable)

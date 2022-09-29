@@ -1,6 +1,7 @@
 import os
 import pickle
 import random
+import numpy as np
 import threading
 
 from Types import *
@@ -113,9 +114,22 @@ class Dataset(object):
                              valid_size=valid_set_size)
         self.hps.save(self.dataset_path)
 
+    def _maskData(self,
+                  obs,
+                  label,
+                  min_mask_rate,
+                  max_mask_rate):
+        keep_rate = 1 - tf.random.uniform(shape=[1],
+                                          minval=min_mask_rate,
+                                          maxval=max_mask_rate)[0]
+        mask = tf.cast(tf.random.uniform(shape=obs.shape) < keep_rate, dtype=tf.float32)
+        return obs * mask, label
+
     def getTrainSet(self,
                     batch_size: int,
                     epochs: int,
+                    min_mask_rate: float,
+                    max_mask_rate: float,
                     shuffle_buffer_size: int = 4096) -> tf.data.Dataset:
         """
         just returns the train set
@@ -129,13 +143,20 @@ class Dataset(object):
             cycle_length=len(self.hps.lineages)).\
             map(map_func=lambda example_proto: self._deserializeGenomeTensor(example_proto),
                 num_parallel_calls=tf.data.AUTOTUNE).\
+            map(map_func=lambda obs, label: self._maskData(obs,
+                                                           label,
+                                                           min_mask_rate,
+                                                           max_mask_rate),
+                num_parallel_calls=tf.data.AUTOTUNE).\
             repeat(epochs).\
             shuffle(shuffle_buffer_size).\
             batch(batch_size).\
             prefetch(tf.data.AUTOTUNE)
 
     def getValidSet(self,
-                    batch_size: int):
+                    batch_size: int,
+                    min_mask_rate: float,
+                    max_mask_rate: float):
         """
         Returns the validation set
         """
@@ -146,7 +167,12 @@ class Dataset(object):
             map_func=lambda filepath: tf.data.TFRecordDataset(filepath),
             num_parallel_calls=tf.data.AUTOTUNE).\
             map(map_func=lambda example_proto: self._deserializeGenomeTensor(example_proto),
-                 num_parallel_calls=tf.data.AUTOTUNE).\
+                num_parallel_calls=tf.data.AUTOTUNE). \
+            map(map_func=lambda obs, label: self._maskData(obs,
+                                                           label,
+                                                           min_mask_rate,
+                                                           max_mask_rate),
+                num_parallel_calls=tf.data.AUTOTUNE).\
             batch(batch_size).\
             prefetch(tf.data.AUTOTUNE)
 

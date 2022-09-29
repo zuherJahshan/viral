@@ -278,12 +278,12 @@ class DataCollectorv2(object):
         # Create a counts sequence for each lineage
         count_seq = []
         for lin in self.remote_lin_accs_dict:
-            accs_cnt = min(len(self.remote_lin_accs_dict[lin]), 4000)
+            accs_cnt = min(len(self.remote_lin_accs_dict[lin]), 1024)
             count_seq.append(accs_cnt)
 
         pd_series = pd.Series(count_seq)
         pd_series.plot.hist(grid=True,
-                            bins=80,
+                            bins=16,
                             rwidth=0.9,
                             color='#607c8e')
         plt.title("Lineage accessions count")
