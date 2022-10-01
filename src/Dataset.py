@@ -130,7 +130,7 @@ class Dataset(object):
                     epochs: int,
                     min_mask_rate: float,
                     max_mask_rate: float,
-                    shuffle_buffer_size: int = 4096) -> tf.data.Dataset:
+                    shuffle_buffer_size: int) -> tf.data.Dataset:
         """
         just returns the train set
         """

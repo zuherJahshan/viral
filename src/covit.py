@@ -44,7 +44,7 @@ class CovitProject(object):
             self.loadNNModel(name)
             return
 
-        if other != None or nnmodel_hps != None:
+        if other != None and nnmodel_hps != None:
             print("One of the arguments \"nnmodel_hps\" or \"other\" MUST be specified to create a new model.")
 
         # If does not exist, create one...
@@ -90,6 +90,7 @@ class CovitProject(object):
               epochs: int,
               batch_size: int,
               mini_batch_size: int = None,
+              shuffle_buffer_size: int = 4096,
               min_mask_rate: float = 0.0,
               max_mask_rate: float = 0.0):
         if self.dataset.getDatasetState() != Dataset.State.SAMPLES_AVAIL:
@@ -112,7 +113,8 @@ class CovitProject(object):
         trainset = self.dataset.getTrainSet(batch_size=mini_batch_size,
                                             epochs=epochs,
                                             min_mask_rate=min_mask_rate,
-                                            max_mask_rate=max_mask_rate)
+                                            max_mask_rate=max_mask_rate,
+                                            shuffle_buffer_size=shuffle_buffer_size)
         self.name_nnmodel_map[name].train(trainset=trainset,
                                           trainset_size=self.dataset.getTrainSetSampleCount(),
                                           epochs=epochs,

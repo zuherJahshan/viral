@@ -85,6 +85,18 @@ class NNModelHPs(object):
                         outp,
                         pickle.HIGHEST_PROTOCOL)
 
+    def copy(self):
+        return NNModelHPs(
+            encoder_repeats=self.encoder_repeats,
+            classes=self.classes,
+            d_model=self.d_model,
+            d_val=self.d_val,
+            d_key=self.d_key,
+            d_ff=self.d_ff,
+            heads=self.heads,
+            dropout_rate=self.dropout_rate
+        )
+
 def loadNNModelHPs(nnmodel_path: str) -> NNModelHPs:
     file_name = nnmodel_path + "hyperparameters.pickle"
     if os.path.exists(file_name):
@@ -111,7 +123,7 @@ class NNModel(object):
             "If creating a new mudel hps or other must be specified!"
         # Check if it is a model to copy
         if other != None:
-            self.hps = other.hps
+            self.hps = other.hps.copy()
             self.results = NNModelResults()
             self.nn = self._copyNN(old_nn=other.nn)
             return
@@ -164,7 +176,6 @@ class NNModel(object):
                  new_layers: int = 1,
                  trainable: bool = False):
         self.hps.encoder_repeats += new_layers
-        print(self.hps.encoder_repeats)
         self.nn = self._copyNN(old_nn=self.nn,
                                encoder_repeats=self.hps.encoder_repeats,
                                trainable=trainable)
@@ -278,7 +289,6 @@ class NNModel(object):
 
         input_shape = (1, 1, old_nn.get_config()["d_model"], base_count)
 
-        print("Encoder repeats is: {}".format(encoder_repeats))
         new_nn = CoViTModel(N=encoder_repeats,
                             d_out=classes,
                             d_model=old_nn.get_config()["d_model"],
