@@ -91,8 +91,10 @@ class CovitProject(object):
               batch_size: int,
               mini_batch_size: int = None,
               shuffle_buffer_size: int = 4096,
-              min_mask_rate: float = 0.0,
-              max_mask_rate: float = 0.0):
+              min_mask_rate_train: float = 0.0,
+              max_mask_rate_train: float = 0.0,
+              min_mask_rate_valid: float = 0.0,
+              max_mask_rate_valid: float = 0.0):
         if self.dataset.getDatasetState() != Dataset.State.SAMPLES_AVAIL:
             print("The dataset state can not allow training, only predicting!")
             print("To train please create a new project.")
@@ -108,12 +110,12 @@ class CovitProject(object):
             self.name_nnmodel_map[name].setBatchSize(batch_size=batch_size,
                                                      mini_batch_size=mini_batch_size)
         validset = self.dataset.getValidSet(mini_batch_size,
-                                            min_mask_rate=min_mask_rate,
-                                            max_mask_rate=max_mask_rate)
+                                            min_mask_rate=min_mask_rate_valid,
+                                            max_mask_rate=max_mask_rate_valid)
         trainset = self.dataset.getTrainSet(batch_size=mini_batch_size,
                                             epochs=epochs,
-                                            min_mask_rate=min_mask_rate,
-                                            max_mask_rate=max_mask_rate,
+                                            min_mask_rate=min_mask_rate_train,
+                                            max_mask_rate=max_mask_rate_train,
                                             shuffle_buffer_size=shuffle_buffer_size)
         self.name_nnmodel_map[name].train(trainset=trainset,
                                           trainset_size=self.dataset.getTrainSetSampleCount(),
@@ -233,9 +235,10 @@ class CovitProject(object):
             print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
 
     def makeTrainable(self,
-                      name):
+                      name,
+                      trainable_encoders=None):
         if name in self.name_nnmodel_map:
-            self.name_nnmodel_map[name].makeTrainable()
+            self.name_nnmodel_map[name].makeTrainable(trainable_encoders)
         else:
             print("A Neural Network model named {} does not exist in the system, please load it first.".format(name))
 

@@ -271,9 +271,17 @@ class NNModel(object):
 
         return True
 
-    def makeTrainable(self):
-        for layer in self.nn.layers:
-            layer.trainable = True
+    def makeTrainable(self,
+                      trainable_encoders):
+        if trainable_encoders == None:
+            for layer in self.nn.layers:
+                layer.trainable = True
+        else:
+            for i in range(len(self.nn.layers)):
+                if i < len(self.nn.layers) - 2 - trainable_encoders:
+                    self.nn.layers[i].trainable = False
+                else:
+                    self.nn.layers[i].trainable = True
         self._compileNN()
 
     def _copyNN(self,
